@@ -25,29 +25,14 @@ var EmergentManager = EmergentManager || {};
     const TICK_RATE = Number(parameters['Tick Rate'] || 60);
 
     //=============================================================================
-    // Game_System Hook (For Save/Load Persistence)
+    // 1. Game_System Hook (Empty Data Container)
     //=============================================================================
     const _Game_System_initialize = Game_System.prototype.initialize;
     Game_System.prototype.initialize = function () {
         _Game_System_initialize.call(this);
         this._emergentState = {
             ticks: 0,
-            variables: {
-                // --- Core Resource Pressures ---
-                foodSupply: 50,
-                banditPower: 20,
-                monsterActivity: 10,
-                prosperity: 40,
-                tradeRoutes: 30,
-                militaryStrength: 25,
-
-                // --- Global Story Pressures ---
-                dragonEcho: 25, // Seeded between 15-35
-                worldTurn: 0,
-
-                // --- Regional Political Pressures ---
-                aldenmereStability: 80
-            }
+            variables: {} 
         };
     };
 
@@ -56,7 +41,40 @@ var EmergentManager = EmergentManager || {};
     };
 
     //=============================================================================
-    // EmergentManager API
+    // 2. Procedural Generation Hook (Fires ONCE at New Game)
+    //=============================================================================
+    const _DataManager_setupNewGame = DataManager.setupNewGame;
+    DataManager.setupNewGame = function() {
+        _DataManager_setupNewGame.call(this);
+        
+        // Roll the initial world environment
+        EmergentManager.generateCoreVariables();
+    };
+
+    //=============================================================================
+    // 3. The Core Environment Generator
+    //=============================================================================
+    EmergentManager.generateCoreVariables = function() {
+        console.log("[Emergent World] Rolling new seed for core environment variables...");
+        const vars = $gameSystem.emergentState().variables;
+
+        // --- Core Resource Pressures (The Environment) ---
+        vars.foodSupply = 40 + Math.randomInt(21);       // Range: 40 to 60
+        vars.banditPower = 10 + Math.randomInt(21);      // Range: 10 to 30
+        vars.monsterActivity = 5 + Math.randomInt(16);   // Range:  5 to 20
+        vars.prosperity = 30 + Math.randomInt(21);       // Range: 30 to 50
+        vars.tradeRoutes = 20 + Math.randomInt(21);      // Range: 20 to 40
+
+        // --- Global Story Pressures ---
+        vars.dragonEcho = 15 + Math.randomInt(21);       // Range: 15 to 35
+        vars.worldTurn = 0;
+
+        // --- Regional Political Pressures ---
+        vars.aldenmereStability = 60 + Math.randomInt(31); // Range: 60 to 90
+    };
+
+    //=============================================================================
+    // 4. EmergentManager API
     //=============================================================================
     EmergentManager.getVar = function (key) {
         return $gameSystem.emergentState().variables[key] || 0;
@@ -71,6 +89,9 @@ var EmergentManager = EmergentManager || {};
         this.setVar(key, current + amount);
     };
 
+    //=============================================================================
+    // 5. The Update Loop
+    //=============================================================================
     EmergentManager.update = function () {
         if (!$gameSystem) return;
 
@@ -84,6 +105,11 @@ var EmergentManager = EmergentManager || {};
     EmergentManager.tickSimulation = function () {
         $gameSystem.emergentState().ticks++;
         console.log("Emergent World Tick: " + $gameSystem.emergentState().ticks);
+        
+        // Trigger the Master Simulation Tick Common Event
+        if ($gameTemp && !$gameTemp.isCommonEventReserved()) {
+            // $gameTemp.reserveCommonEvent(10); 
+        }
 
         // Broadcast to other layers (Factions, Events, etc.)
         if (this.onTick) this.onTick();
