@@ -28,43 +28,51 @@ var EmergentManager = EmergentManager || {};
     // Game_System Hook (For Save/Load Persistence)
     //=============================================================================
     const _Game_System_initialize = Game_System.prototype.initialize;
-    Game_System.prototype.initialize = function() {
+    Game_System.prototype.initialize = function () {
         _Game_System_initialize.call(this);
         this._emergentState = {
             ticks: 0,
             variables: {
+                // --- Core Resource Pressures ---
                 foodSupply: 50,
                 banditPower: 20,
                 monsterActivity: 10,
                 prosperity: 40,
-                tradeRoutes: 30
+                tradeRoutes: 30,
+
+                // --- Global Story Pressures ---
+                dragonEcho: 25, // Seeded between 15-35
+                worldTurn: 0,
+
+                // --- Regional Political Pressures ---
+                aldenmereStability: 80
             }
         };
     };
 
-    Game_System.prototype.emergentState = function() {
+    Game_System.prototype.emergentState = function () {
         return this._emergentState;
     };
 
     //=============================================================================
     // EmergentManager API
     //=============================================================================
-    EmergentManager.getVar = function(key) {
+    EmergentManager.getVar = function (key) {
         return $gameSystem.emergentState().variables[key] || 0;
     };
 
-    EmergentManager.setVar = function(key, value) {
+    EmergentManager.setVar = function (key, value) {
         $gameSystem.emergentState().variables[key] = Math.max(0, value); // Prevent negative
     };
 
-    EmergentManager.modVar = function(key, amount) {
+    EmergentManager.modVar = function (key, amount) {
         const current = this.getVar(key);
         this.setVar(key, current + amount);
     };
 
-    EmergentManager.update = function() {
+    EmergentManager.update = function () {
         if (!$gameSystem) return;
-        
+
         this._tickCounter = (this._tickCounter || 0) + 1;
         if (this._tickCounter >= TICK_RATE) {
             this._tickCounter = 0;
@@ -72,10 +80,10 @@ var EmergentManager = EmergentManager || {};
         }
     };
 
-    EmergentManager.tickSimulation = function() {
+    EmergentManager.tickSimulation = function () {
         $gameSystem.emergentState().ticks++;
         console.log("Emergent World Tick: " + $gameSystem.emergentState().ticks);
-        
+
         // Broadcast to other layers (Factions, Events, etc.)
         if (this.onTick) this.onTick();
     };
@@ -84,7 +92,7 @@ var EmergentManager = EmergentManager || {};
     // Game_Map Hook (To drive the simulation loop)
     //=============================================================================
     const _Game_Map_update = Game_Map.prototype.update;
-    Game_Map.prototype.update = function(sceneActive) {
+    Game_Map.prototype.update = function (sceneActive) {
         _Game_Map_update.call(this, sceneActive);
         if (sceneActive) {
             EmergentManager.update();
