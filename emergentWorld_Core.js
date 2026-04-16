@@ -39,6 +39,7 @@ var EmergentManager = EmergentManager || {};
                 monsterActivity: 10,
                 prosperity: 40,
                 tradeRoutes: 30,
+                militaryStrength: 25,
 
                 // --- Global Story Pressures ---
                 dragonEcho: 25, // Seeded between 15-35
