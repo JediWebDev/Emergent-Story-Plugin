@@ -8,7 +8,7 @@
  * @command CheckFactionTrait
  * @text Check Faction Trait
  * @desc Turns a switch ON if a faction has a specific trait, useful for changing map visuals.
- * * @arg factionId
+ * @arg factionId
  * @text Faction ID
  * @type string
  * @default valemont
@@ -21,7 +21,7 @@
  * @arg switchId
  * @text Switch ID to Toggle
  * @type switch
- * * @command SpeakCharacterMemory
+ * @command SpeakCharacterMemory
  * @text Speak Character Memory
  * @desc Makes an NPC state their most recent memory or emergent history.
  *
