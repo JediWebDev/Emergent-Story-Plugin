@@ -30,6 +30,8 @@
         const banditPower = EmergentManager.getVar("banditPower");
         const prosperity = EmergentManager.getVar("prosperity");
         const dragonEcho = EmergentManager.getVar("dragonEcho");
+        const monsterActivity = EmergentManager.getVar("monsterActivity");
+        const foodSupply = EmergentManager.getVar("foodSupply");
         
         // 3. Store the dynamic text in MZ Game Variables for message boxes
         let greeting = "My Liege, you assume control of the House at a pivotal moment.";
