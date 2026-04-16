@@ -1,27 +1,75 @@
 /*:
  * @target MZ
- * @plugindesc [v1.0] Layer 2 - Faction System
+ * @plugindesc [v1.0] Layer 2 - Faction System (Procedural Generation)
  * @author dijOTTER
  * @base EmergentWorld_Core
  *
  * @help EmergentWorld_Factions.js
- * * Tracks the power, wealth, and territory of the starting factions.
+ * * Generates factions dynamically at the start of a New Game with
+ * randomized starting variables to ensure every seed is unique.
  */
 
 var Imported = Imported || {};
 Imported.EmergentWorld_Factions = true;
 
 (() => {
+    //=============================================================================
+    // 1. Data Structure Initialization (Empty Container)
+    //=============================================================================
     const _Game_System_initialize = Game_System.prototype.initialize;
     Game_System.prototype.initialize = function() {
         _Game_System_initialize.call(this);
-        this._emergentState.factions = {
-            "villagers": { territory: 3, military: 10, wealth: 20 },
-            "bandits":   { territory: 1, military: 30, wealth: 50 },
-            "merchants": { territory: 2, military: 15, wealth: 80 }
+        // Only create the empty object. Do not hardcode the stats here.
+        this._emergentState.factions = {};
+    };
+
+    //=============================================================================
+    // 2. Procedural Generation Hook (Fires ONCE at New Game)
+    //=============================================================================
+    const _DataManager_setupNewGame = DataManager.setupNewGame;
+    DataManager.setupNewGame = function() {
+        _DataManager_setupNewGame.call(this);
+        
+        // Call the procedural generator
+        EmergentManager.generateStartingFactions();
+    };
+
+    //=============================================================================
+    // 3. The Faction Generator
+    //=============================================================================
+    EmergentManager.generateStartingFactions = function() {
+        console.log("[Emergent World] Rolling new seed for faction variables...");
+        const state = $gameSystem.emergentState();
+        
+        // Generate the Core Factions utilizing Ardessian Lore Templates
+        state.factions["caelmont"] = this.rollFactionStats("Royal House Caelmont", "Aldenmere", "Stable");
+        state.factions["valemont"] = this.rollFactionStats("House Valemont", "Aldenmere", "Ambitious");
+        state.factions["vrakkoth"] = this.rollFactionStats("Dominion of Vrakkoth", "Vrakkoth", "Militaristic");
+        state.factions["merchants"] = this.rollFactionStats("The Golden Ledger", "Aldenmere", "Greedy");
+        state.factions["bandits"] = this.rollFactionStats("The Ashen Wolves", "Wildlands", "Rebellious");
+        
+        // Now that the factions are generated, calculate the starting global values
+        this.recalculateGlobalMilitary();
+    };
+
+    EmergentManager.rollFactionStats = function(name, realm, baseTrait) {
+        // Math.randomInt(max) generates a number between 0 and max-1
+        // We add a baseline value so no faction starts completely at 0
+        return {
+            name: name,
+            realm: realm,
+            power: 30 + Math.randomInt(51),     // Range: 30 to 80
+            wealth: 20 + Math.randomInt(61),    // Range: 20 to 80
+            military: 10 + Math.randomInt(71),  // Range: 10 to 80
+            loyalty: 20 + Math.randomInt(81),   // Range: 20 to 100
+            ambition: 10 + Math.randomInt(71),  // Range: 10 to 80
+            traits: [baseTrait] // Base cultural trait is static, others evolve
         };
     };
 
+    //=============================================================================
+    // 4. API & Simulation Logic
+    //=============================================================================
     EmergentManager.getFaction = function(factionId) {
         return $gameSystem.emergentState().factions[factionId];
     };
@@ -33,27 +81,47 @@ Imported.EmergentWorld_Factions = true;
         }
     };
 
+    EmergentManager.recalculateGlobalMilitary = function() {
+        const caelmont = this.getFaction("caelmont");
+        const valemont = this.getFaction("valemont");
+        
+        if (!caelmont || !valemont) return;
+
+        let totalStrength = 0;
+        if (!valemont.traits.includes("Rebellious")) {
+            totalStrength += valemont.military;
+        }
+        totalStrength += caelmont.military;
+        
+        this.setVar("militaryStrength", totalStrength);
+    };
+
+    //=============================================================================
+    // 5. The Dynamic Tick
+    //=============================================================================
     const _EmergentManager_onTick = EmergentManager.onTick;
     EmergentManager.onTick = function() {
         if (_EmergentManager_onTick) _EmergentManager_onTick.call(this);
 
-        const villagers = this.getFaction("villagers");
+        const merchants = this.getFaction("merchants");
         const bandits = this.getFaction("bandits");
 
-        // Natural simulation growth rules
-        if (bandits.military < villagers.military) {
+        if (!merchants || !bandits) return; // Safety check
+
+        // Natural simulation growth rules based on RNG starting stats
+        if (bandits.military < merchants.military) {
             this.modVar("foodSupply", 5);
             this.modVar("prosperity", 2);
-            this.modFactionStat("villagers", "wealth", 5);
+            this.modFactionStat("merchants", "wealth", 5);
         } else {
             // Bandits are stronger! They drain the town and grow their power.
             this.modVar("prosperity", -2);
             this.modVar("foodSupply", -2);
-            this.modVar("banditPower", 5); // This pushes us toward the Uprising Event!
+            this.modVar("banditPower", 5); 
             this.modFactionStat("bandits", "military", 2);
         }
 
-        // Print the current state to the console so you can watch it evolve
-        console.log(`[Stats] Food: ${this.getVar("foodSupply")} | Bandit Power: ${this.getVar("banditPower")} | Prosperity: ${this.getVar("prosperity")}`);
+        // Print the current state to the console
+        console.log(`[RNG State] Merchant Wealth: ${merchants.wealth} | Bandit Military: ${bandits.military}`);
     };
 })();
