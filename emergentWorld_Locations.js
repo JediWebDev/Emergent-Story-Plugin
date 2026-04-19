@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [v1.0] Layer 7 - Location & Object Generator
+ * @plugindesc [v1.0] Layer 4 - Location & Object Generator
  * @author Emergent Story System
  * @base EmergentWorld_Core
  * @base EmergentWorld_Quests
