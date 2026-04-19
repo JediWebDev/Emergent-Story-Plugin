@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [v1.0] Layer 6 - MZ Integration (Visuals & Dialogue)
+ * @plugindesc [v1.0] Layer 8 - MZ Integration (Visuals & Dialogue)
  * @author dijOTTER
  * @base EmergentWorld_Core
  * @base EmergentWorld_Characters
