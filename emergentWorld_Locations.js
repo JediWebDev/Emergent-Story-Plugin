@@ -1,9 +1,9 @@
 /*:
  * @target MZ
- * @plugindesc [v1.0] Layer 4 - Location & Object Generator
+ * @plugindesc [v1.0] Layer 6 - Location & Object Generator
  * @author Emergent Story System
  * @base EmergentWorld_Core
- * @base EmergentWorld_Quests
+ * @base EmergentWorld_Quest
  *
  * @help EmergentWorld_Locations.js
  * * Assigns physical locations to generated quests and tracks 
