@@ -28,7 +28,6 @@ Imported.EmergentWorld_Quests = true;
         this._emergentState.questIdCounter = 0;
     };
 
-    // Ensure array exists on old save files
     const ensureQuestState = () => {
         const state = $gameSystem.emergentState();
         if (!state.quests) {
@@ -44,7 +43,6 @@ Imported.EmergentWorld_Quests = true;
     EmergentManager.generateQuest = function(templateId, problemLevel) {
         const state = ensureQuestState();
         
-        // Prevent duplicate quests of the same template from flooding the board
         const existingQuest = state.quests.find(q => q.template === templateId && q.status === 'active');
         if (existingQuest) return null;
 
@@ -58,16 +56,18 @@ Imported.EmergentWorld_Quests = true;
             rewardGold: 0
         };
 
-        // Process templates based on the Design Doc structure
         if (templateId === "bandit_bounty") {
             const merchants = this.getCharactersByFaction("merchants");
-            if (merchants.length === 0) return null; // No one to give the quest!
+            if (merchants.length === 0) return null; 
             
             const giver = merchants[Math.randomInt(merchants.length)];
             quest.giverName = giver.name;
             quest.title = "Bounty: Cull the Bandits";
             quest.description = `${giver.name} is willing to pay you to reduce the bandit threat.`;
-            quest.rewardGold = 100 + (problemLevel * 2); // Harder problem = better pay
+            quest.rewardGold = 100 + (problemLevel * 2); 
+            
+            // UI INTEGRATION: Flag Switch 15 so CE 10 knows to push the CGMZ notification
+            $gameSwitches.setValue(15, true); 
             
         } else if (templateId === "gather_rations") {
             const villagers = this.getCharactersByFaction("villagers");
@@ -78,6 +78,9 @@ Imported.EmergentWorld_Quests = true;
             quest.title = "Emergency Rations";
             quest.description = `The village is starving. ${giver.name} needs you to gather food.`;
             quest.rewardGold = 50;
+            
+            // UI INTEGRATION: Flag Switch 16 so CE 10 knows to push the CGMZ notification
+            $gameSwitches.setValue(16, true); 
         }
 
         state.quests.push(quest);
@@ -98,26 +101,24 @@ Imported.EmergentWorld_Quests = true;
             $gameParty.gainGold(quest.rewardGold);
             console.log(`[Quests] Quest Completed: ${quest.title}. Rewarded ${quest.rewardGold}G.`);
             
-            // Impact the world state based on the quest template!
             if (quest.template === "bandit_bounty") {
                 this.modVar("banditPower", -20);
                 this.modVar("prosperity", 5);
                 this.modFactionStat("bandits", "military", -15);
             } else if (quest.template === "gather_rations") {
                 this.modVar("foodSupply", 30);
-                this.modFactionStat("villagers", "wealth", -10); // They spent wealth to pay you
+                this.modFactionStat("villagers", "wealth", -10); 
             }
         }
     };
 
     //=============================================================================
-    // Detector Hook (Scans the world to generate quests)
+    // Detector Hook 
     //=============================================================================
     const _EmergentManager_onTick = EmergentManager.onTick;
     EmergentManager.onTick = function() {
         if (_EmergentManager_onTick) _EmergentManager_onTick.call(this);
 
-        // Detect problems and convert them to quests
         const banditPower = this.getVar("banditPower");
         if (banditPower > 40) {
             this.generateQuest("bandit_bounty", banditPower);
