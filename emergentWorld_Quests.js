@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [v1.0] Layer 6 - Quest Generator
+ * @plugindesc [v1.0] Layer 4 - Quest Generator
  * @author dijOTTER
  * @base EmergentWorld_Core
  * @base EmergentWorld_Characters
