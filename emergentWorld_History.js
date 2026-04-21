@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [v1.1] Layer 4 - History & Epoch Engine (Multi-Faction)
+ * @plugindesc [v1.1] Layer 9 - History & Epoch Engine (Multi-Faction)
  * @author dijOTTER
  * @base EmergentWorld_Core
  * @base EmergentWorld_Characters
