@@ -68,7 +68,9 @@ const VisualPools = {
     
     // NEW: A simple name generator
     EmergentManager.generateRandomName = function(factionId) {
-        const names = ["Alden", "Bram", "Silas", "Elara", "Kael", "Lyra", "Doran", "Thane", "Garrick", "Maeve"];
+        const names = ["Alden", "Bram", "Silas", "Elara", "Kael", "Lyra", "Doran", "Thane", "Garrick", "Maeve",
+            "Caleb", "Rowan", "Finn", "Elias", "Jasper", "Corin", "Nolan", "Beckett", "Arthur", "Leon",
+            "Aria", "Elena", "Clara", "Serena", "Vera", "Lira", "Tessa", "Mila", "Freya", "Nina"];
         return names[Math.randomInt(names.length)];
     };
 
