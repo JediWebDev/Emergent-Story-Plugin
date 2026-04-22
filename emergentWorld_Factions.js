@@ -69,7 +69,15 @@ Imported.EmergentWorld_Factions = true;
     EmergentManager.modFactionStat = function(factionId, stat, amount) {
         const faction = this.getFaction(factionId);
         if (faction && faction[stat] !== undefined) {
+            const previousValue = faction[stat];
             faction[stat] = Math.max(0, faction[stat] + amount);
+            this.logEvent("faction_stat_changed", {
+                factionId: factionId,
+                stat: stat,
+                previousValue: previousValue,
+                amount: Number(amount) || 0,
+                newValue: faction[stat]
+            });
         }
     };
 
@@ -110,7 +118,9 @@ Imported.EmergentWorld_Factions = true;
             this.modFactionStat("bandits", "military", 2);
         }
 
-        // Print the current state to the console
-        console.log(`[RNG State] Merchant Wealth: ${merchants.wealth} | Bandit Military: ${bandits.military}`);
+        this.logEvent("faction_tick_summary", {
+            merchantsWealth: merchants.wealth,
+            banditsMilitary: bandits.military
+        });
     });
 })();

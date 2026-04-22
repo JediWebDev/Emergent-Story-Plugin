@@ -142,6 +142,11 @@ const VisualPools = {
         };
 
         character.memory.push(normalizedMemory);
+        this.logEvent("memory_created", {
+            characterId: character.id,
+            characterName: character.name,
+            memory: normalizedMemory
+        });
     };
 
     EmergentManager.updateOpinion = function(character, target, value) {
@@ -160,7 +165,13 @@ const VisualPools = {
             ensureCharacterMindState(char);
             char.isAlive = false;
             char.history.push(`Died: ${reason}`);
-            console.log(`[Characters] ${char.name} has died. Cause: ${reason}`);
+            this.logEvent("character_death", {
+                characterId: char.id,
+                characterName: char.name,
+                factionId: char.faction,
+                role: char.role,
+                reason: reason
+            });
             
             if (char.role === "Leader") {
                 this.modFactionStat(char.faction, "military", -10);

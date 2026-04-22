@@ -12,6 +12,11 @@
  * @min 60
  * @desc How many frames before the simulation ticks forward? (60 = 1 sec)
  * @default 3600
+ *
+ * @param Debug Console Logs
+ * @type boolean
+ * @desc If true, simulation events are echoed to the console.
+ * @default false
  */
 
 var Imported = Imported || {};
@@ -24,6 +29,7 @@ EmergentManager._tickHandlers = EmergentManager._tickHandlers || [];
     const pluginName = "EmergentWorld_Core";
     const parameters = PluginManager.parameters(pluginName);
     const TICK_RATE = Number(parameters['Tick Rate'] || 60);
+    EmergentManager.debugLogs = String(parameters["Debug Console Logs"] || "false") === "true";
 
     //=============================================================================
     // 1. Game_System Hook (Empty Data Container)
@@ -33,7 +39,8 @@ EmergentManager._tickHandlers = EmergentManager._tickHandlers || [];
         _Game_System_initialize.call(this);
         this._emergentState = {
             ticks: 0,
-            variables: {} 
+            variables: {},
+            eventLog: []
         };
     };
 
@@ -104,6 +111,24 @@ EmergentManager._tickHandlers = EmergentManager._tickHandlers || [];
         return $gameSystem.emergentState().variables[key] || 0;
     };
 
+    EmergentManager.logEvent = function(type, payload) {
+        if (!$gameSystem || !$gameSystem.emergentState) return;
+        const state = $gameSystem.emergentState();
+        if (!Array.isArray(state.eventLog)) state.eventLog = [];
+
+        const entry = {
+            type: String(type || "unknown"),
+            timestamp: Number(state.ticks || 0),
+            data: payload || {}
+        };
+
+        state.eventLog.push(entry);
+
+        if (this.debugLogs) {
+            console.log(`[Emergent:${entry.type}]`, entry);
+        }
+    };
+
     EmergentManager.setVar = function (key, value) {
         $gameSystem.emergentState().variables[key] = Math.max(0, value); // Prevent negative
     };
@@ -149,7 +174,7 @@ EmergentManager._tickHandlers = EmergentManager._tickHandlers || [];
     EmergentManager.tickSimulation = function () {
         const state = $gameSystem.emergentState();
         state.ticks++;
-        console.log("Emergent World Tick: " + state.ticks);
+        this.logEvent("world_tick", { tick: state.ticks });
         
         // Trigger the Master Simulation Tick Common Event
         if ($gameTemp && !$gameTemp.isCommonEventReserved()) {

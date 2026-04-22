@@ -84,7 +84,14 @@ Imported.EmergentWorld_Quests = true;
         }
 
         state.quests.push(quest);
-        console.log(`[Quests] New Quest Generated: ${quest.title} (Giver: ${quest.giverName})`);
+        this.logEvent("quest_generated", {
+            questId: quest.id,
+            template: quest.template,
+            title: quest.title,
+            giverName: quest.giverName,
+            rewardGold: quest.rewardGold,
+            problemLevel: problemLevel
+        });
         return quest;
     };
 
@@ -99,7 +106,12 @@ Imported.EmergentWorld_Quests = true;
         if (quest && quest.status === 'active') {
             quest.status = 'completed';
             $gameParty.gainGold(quest.rewardGold);
-            console.log(`[Quests] Quest Completed: ${quest.title}. Rewarded ${quest.rewardGold}G.`);
+            this.logEvent("quest_completed", {
+                questId: quest.id,
+                template: quest.template,
+                title: quest.title,
+                rewardGold: quest.rewardGold
+            });
             
             if (quest.template === "bandit_bounty") {
                 this.modVar("banditPower", -20);
