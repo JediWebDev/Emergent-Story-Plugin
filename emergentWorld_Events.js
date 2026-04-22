@@ -40,6 +40,15 @@ Imported.EmergentWorld_Events = true;
             
             // NEW: The uprising kills a random villager!
             const villagers = EmergentManager.getCharactersByFaction("villagers");
+            for (const villager of villagers) {
+                EmergentManager.addMemory(villager, {
+                    type: "bandit_uprising",
+                    target: "bandits",
+                    value: -20
+                });
+                EmergentManager.updateOpinion(villager, "bandits", -20);
+            }
+
             if (villagers.length > 0) {
                 const victim = villagers[Math.randomInt(villagers.length)];
                 EmergentManager.killCharacter(victim.id, "Slain during the Bandit Uprising.");
@@ -59,6 +68,15 @@ Imported.EmergentWorld_Events = true;
             
             // NEW: Famine takes a toll on the weak
             const villagers = EmergentManager.getCharactersByFaction("villagers");
+            for (const villager of villagers) {
+                EmergentManager.addMemory(villager, {
+                    type: "famine",
+                    target: "world",
+                    value: -10
+                });
+                EmergentManager.updateOpinion(villager, "bandits", -5);
+            }
+
             if (villagers.length > 0) {
                 const victim = villagers[Math.randomInt(villagers.length)];
                 EmergentManager.killCharacter(victim.id, "Succumbed to starvation during the Great Famine.");

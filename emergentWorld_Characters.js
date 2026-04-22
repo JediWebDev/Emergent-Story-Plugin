@@ -35,6 +35,14 @@ const VisualPools = {
 };
 
 (() => {
+    const ensureCharacterMindState = (character) => {
+        if (!character) return;
+        if (!Array.isArray(character.memory)) character.memory = [];
+        if (!character.opinions || typeof character.opinions !== "object") {
+            character.opinions = {};
+        }
+    };
+
     //=============================================================================
     // Game_System Hook for Characters
     //=============================================================================
@@ -91,6 +99,8 @@ const VisualPools = {
             role: role,
             isAlive: true,
             history: [`Born in the current era as a ${role}.`],
+            memory: [],
+            opinions: {},
             
             // 3. Stamp the Visual DNA!
             spriteName: look.name,
@@ -116,9 +126,38 @@ const VisualPools = {
         return state.characters.filter(c => c.faction === factionId && c.isAlive);
     };
 
+    EmergentManager.addMemory = function(character, memory) {
+        if (!character || !memory) return;
+        ensureCharacterMindState(character);
+
+        const currentTick = ($gameSystem && $gameSystem.emergentState())
+            ? $gameSystem.emergentState().ticks
+            : 0;
+
+        const normalizedMemory = {
+            type: String(memory.type || "unknown"),
+            target: String(memory.target || "unknown"),
+            value: Number(memory.value) || 0,
+            tick: memory.tick !== undefined ? Number(memory.tick) : currentTick
+        };
+
+        character.memory.push(normalizedMemory);
+    };
+
+    EmergentManager.updateOpinion = function(character, target, value) {
+        if (!character || target === undefined || target === null) return;
+        ensureCharacterMindState(character);
+
+        const targetKey = String(target);
+        const delta = Number(value) || 0;
+        const current = Number(character.opinions[targetKey]) || 0;
+        character.opinions[targetKey] = current + delta;
+    };
+
     EmergentManager.killCharacter = function(id, reason) {
         const char = this.getCharacter(id);
         if (char && char.isAlive) {
+            ensureCharacterMindState(char);
             char.isAlive = false;
             char.history.push(`Died: ${reason}`);
             console.log(`[Characters] ${char.name} has died. Cause: ${reason}`);
