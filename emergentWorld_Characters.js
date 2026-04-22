@@ -35,6 +35,8 @@ const VisualPools = {
 };
 
 (() => {
+    EmergentManager.MAX_CHARACTER_MEMORIES = EmergentManager.MAX_CHARACTER_MEMORIES || 20;
+
     const ensureCharacterMindState = (character) => {
         if (!character) return;
         if (!Array.isArray(character.memory)) character.memory = [];
@@ -142,6 +144,10 @@ const VisualPools = {
         };
 
         character.memory.push(normalizedMemory);
+        if (character.memory.length > this.MAX_CHARACTER_MEMORIES) {
+            const overflow = character.memory.length - this.MAX_CHARACTER_MEMORIES;
+            character.memory.splice(0, overflow);
+        }
         this.logEvent("memory_created", {
             characterId: character.id,
             characterName: character.name,
@@ -156,7 +162,8 @@ const VisualPools = {
         const targetKey = String(target);
         const delta = Number(value) || 0;
         const current = Number(character.opinions[targetKey]) || 0;
-        character.opinions[targetKey] = current + delta;
+        const nextValue = current + delta;
+        character.opinions[targetKey] = Math.max(-100, Math.min(100, nextValue));
     };
 
     EmergentManager.killCharacter = function(id, reason) {

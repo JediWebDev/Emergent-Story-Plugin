@@ -24,6 +24,7 @@ Imported.EmergentWorld_Core = true;
 
 var EmergentManager = EmergentManager || {};
 EmergentManager._tickHandlers = EmergentManager._tickHandlers || [];
+EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES || 1000;
 
 (() => {
     const pluginName = "EmergentWorld_Core";
@@ -123,6 +124,10 @@ EmergentManager._tickHandlers = EmergentManager._tickHandlers || [];
         };
 
         state.eventLog.push(entry);
+        if (state.eventLog.length > this.MAX_EVENT_LOG_ENTRIES) {
+            const overflow = state.eventLog.length - this.MAX_EVENT_LOG_ENTRIES;
+            state.eventLog.splice(0, overflow);
+        }
 
         if (this.debugLogs) {
             console.log(`[Emergent:${entry.type}]`, entry);
@@ -183,7 +188,8 @@ EmergentManager._tickHandlers = EmergentManager._tickHandlers || [];
 
         // Deterministic scheduler for all simulation layers.
         for (const handler of this._tickHandlers) {
-            handler.fn.call(this);
+            // Backward compatible: existing handlers can ignore the state argument.
+            handler.fn.call(this, state);
         }
     };
 

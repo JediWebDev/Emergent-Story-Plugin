@@ -99,7 +99,7 @@ Imported.EmergentWorld_Factions = true;
     //=============================================================================
     // 5. The Dynamic Tick
     //=============================================================================
-    EmergentManager.registerTickHandler("factions", 10, function() {
+    EmergentManager.registerTickHandler("factions", 10, function(state) {
         const merchants = this.getFaction("merchants");
         const bandits = this.getFaction("bandits");
 

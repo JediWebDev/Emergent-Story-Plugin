@@ -50,7 +50,13 @@ Imported.EmergentWorld_Events = true;
             }
 
             if (villagers.length > 0) {
-                const victim = villagers[Math.randomInt(villagers.length)];
+                // Opinion-driven choice: villagers who hate bandits most take greater risks.
+                const victim = villagers.reduce((selected, candidate) => {
+                    if (!selected) return candidate;
+                    const selectedOpinion = Number(selected.opinions && selected.opinions.bandits) || 0;
+                    const candidateOpinion = Number(candidate.opinions && candidate.opinions.bandits) || 0;
+                    return candidateOpinion < selectedOpinion ? candidate : selected;
+                }, null);
                 EmergentManager.killCharacter(victim.id, "Slain during the Bandit Uprising.");
             }
         }
@@ -100,7 +106,7 @@ Imported.EmergentWorld_Events = true;
     //=============================================================================
     // Event Evaluation Loop
     //=============================================================================
-    EmergentManager.registerTickHandler("events", 20, function() {
+    EmergentManager.registerTickHandler("events", 20, function(state) {
         // Gather valid events
         const possibleEvents = [];
         for (const rule of this._eventRules) {

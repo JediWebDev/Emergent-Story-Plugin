@@ -127,7 +127,7 @@ Imported.EmergentWorld_Quests = true;
     //=============================================================================
     // Detector Hook 
     //=============================================================================
-    EmergentManager.registerTickHandler("quests", 30, function() {
+    EmergentManager.registerTickHandler("quests", 30, function(state) {
         const banditPower = this.getVar("banditPower");
         if (banditPower > 40) {
             this.generateQuest("bandit_bounty", banditPower);
