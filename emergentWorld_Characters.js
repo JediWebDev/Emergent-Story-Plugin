@@ -43,6 +43,9 @@ const VisualPools = {
         if (!character.opinions || typeof character.opinions !== "object") {
             character.opinions = {};
         }
+        if (!character.relationships || typeof character.relationships !== "object") {
+            character.relationships = {};
+        }
     };
 
     //=============================================================================
@@ -103,6 +106,7 @@ const VisualPools = {
             history: [`Born in the current era as a ${role}.`],
             memory: [],
             opinions: {},
+            relationships: {},
             
             // 3. Stamp the Visual DNA!
             spriteName: look.name,
@@ -163,7 +167,110 @@ const VisualPools = {
         const delta = Number(value) || 0;
         const current = Number(character.opinions[targetKey]) || 0;
         const nextValue = current + delta;
-        character.opinions[targetKey] = Math.max(-100, Math.min(100, nextValue));
+        const clamped = Math.max(-100, Math.min(100, nextValue));
+        character.opinions[targetKey] = clamped;
+
+        if (delta !== 0) {
+            this.logEvent("npc_opinion_shift", {
+                characterId: character.id,
+                characterName: character.name,
+                target: targetKey,
+                previousValue: current,
+                delta: delta,
+                newValue: clamped
+            });
+        }
+    };
+
+    EmergentManager.getRelationship = function(a, b) {
+        if (!a || !b) return 0;
+        ensureCharacterMindState(a);
+        const key = String(b.id);
+        return Number(a.relationships[key]) || 0;
+    };
+
+    EmergentManager.updateRelationship = function(a, b, delta) {
+        if (!a || !b || a.id === b.id) return;
+        ensureCharacterMindState(a);
+        ensureCharacterMindState(b);
+
+        const amount = Number(delta) || 0;
+        if (amount === 0) return;
+
+        const aKey = String(b.id);
+        const bKey = String(a.id);
+        const oldAB = Number(a.relationships[aKey]) || 0;
+        const oldBA = Number(b.relationships[bKey]) || 0;
+        const nextAB = Math.max(-100, Math.min(100, oldAB + amount));
+        const nextBA = Math.max(-100, Math.min(100, oldBA + amount));
+
+        a.relationships[aKey] = nextAB;
+        b.relationships[bKey] = nextBA;
+
+        this.logEvent("npc_relationship_changed", {
+            aId: a.id,
+            bId: b.id,
+            delta: amount,
+            newAB: nextAB,
+            newBA: nextBA
+        });
+    };
+
+    EmergentManager.getNearbyNPCs = function(character, state) {
+        const chars = state && Array.isArray(state.characters) ? state.characters : [];
+        return chars.filter(other => other && other.isAlive && other.id !== character.id);
+    };
+
+    EmergentManager.calculateGroupAffiliation = function(character) {
+        if (!character) return { groupType: "independent", strength: 0 };
+        ensureCharacterMindState(character);
+
+        const scores = {
+            bandits: Number(character.opinions.bandits) || 0,
+            merchants: Number(character.opinions.merchants) || 0,
+            villagers: Number(character.opinions.villagers) || 0
+        };
+        scores[character.faction] = (Number(scores[character.faction]) || 0) + 12;
+
+        let bestType = "independent";
+        let bestScore = 0;
+        for (const key in scores) {
+            if (scores[key] > bestScore) {
+                bestScore = scores[key];
+                bestType = key;
+            }
+        }
+
+        return {
+            groupType: bestType,
+            strength: Math.max(0, Math.min(100, bestScore))
+        };
+    };
+
+    EmergentManager.applySocialInfluence = function(actor, action, state) {
+        if (!actor || !actor.isAlive) return;
+        const observers = this.getNearbyNPCs(actor, state);
+        const actorFaction = String(actor.faction || "unknown");
+        const actorNewFaction = actor._lastFactionShiftTo || null;
+
+        for (const observer of observers) {
+            ensureCharacterMindState(observer);
+            const relationBefore = this.getRelationship(observer, actor);
+
+            if (action === "act_aggressively") {
+                this.updateOpinion(observer, actorFaction, -2);
+                this.updateRelationship(observer, actor, -3);
+            } else if (action === "trade" || action === "support_group_action" || action === "help") {
+                this.updateOpinion(observer, actorFaction, 1);
+                this.updateRelationship(observer, actor, 2);
+            } else if (action === "join_faction_action" && actorNewFaction) {
+                const trust = relationBefore >= 0 ? 1 : -1;
+                this.updateOpinion(observer, actorNewFaction, trust);
+                this.updateRelationship(observer, actor, trust > 0 ? 1 : -1);
+            } else if (action === "join_group_action" || action === "follow_leader_action") {
+                this.updateRelationship(observer, actor, 1);
+            }
+        }
     };
 
     EmergentManager.buildDecisionContext = function(character, state) {
@@ -190,7 +297,10 @@ const VisualPools = {
             "avoid_conflict",
             "seek_safety",
             "join_faction_action",
-            "act_aggressively"
+            "act_aggressively",
+            "join_group_action",
+            "support_group_action",
+            "follow_leader_action"
         ];
     };
 
@@ -214,6 +324,12 @@ const VisualPools = {
                 return 0;
             case "act_aggressively":
                 return (isBanditAligned ? 24 : 6) + (character.role === "Thug" ? 14 : 0) + (context.banditPower > 50 ? 10 : 0);
+            case "join_group_action":
+                return Number(context.groupStrength || 0) > 35 ? 22 : 0;
+            case "support_group_action":
+                return Number(context.groupStrength || 0) > 45 ? 24 : 0;
+            case "follow_leader_action":
+                return context.coordinationAction === "follow_leader_action" ? 28 : 0;
             default:
                 return 0;
         }
@@ -225,6 +341,12 @@ const VisualPools = {
             action: action,
             score: this.scoreAction(character, action, context)
         }));
+
+        // Coordination bonus: trusted social clusters can gently align behavior.
+        if (context.coordinationAction) {
+            const coordinated = scored.find(s => s.action === context.coordinationAction);
+            if (coordinated) coordinated.score += 18;
+        }
 
         scored.sort((a, b) => {
             if (b.score !== a.score) return b.score - a.score;
@@ -238,6 +360,8 @@ const VisualPools = {
     };
 
     EmergentManager.executeAction = function(character, action, context) {
+        character._lastFactionShiftTo = null;
+
         switch (action) {
             case "seek_safety":
                 this.addMemory(character, { type: "seek_safety", target: "world", value: 5 });
@@ -263,6 +387,7 @@ const VisualPools = {
 
                 if (nextFaction !== previousFaction) {
                     character.faction = nextFaction;
+                    character._lastFactionShiftTo = nextFaction;
                     this.addMemory(character, { type: "faction_shift", target: nextFaction, value: 10 });
                     this.logEvent("npc_faction_changed", {
                         characterId: character.id,
@@ -278,6 +403,23 @@ const VisualPools = {
             case "act_aggressively":
                 this.addMemory(character, { type: "aggressive_posture", target: "bandits", value: 6 });
                 this.updateOpinion(character, "bandits", character.faction === "bandits" ? 3 : -2);
+                break;
+            case "join_group_action":
+                this.addMemory(character, { type: "group_alignment", target: context.groupType || "independent", value: 4 });
+                this.updateOpinion(character, context.groupType || character.faction, 2);
+                break;
+            case "support_group_action":
+                this.addMemory(character, { type: "group_support", target: context.groupType || character.faction, value: 5 });
+                this.updateOpinion(character, context.groupType || character.faction, 1);
+                break;
+            case "follow_leader_action":
+                if (context.groupLeaderId !== undefined && context.groupLeaderId !== null) {
+                    this.addMemory(character, { type: "follow_leader", target: String(context.groupLeaderId), value: 3 });
+                    const leader = this.getCharacter(Number(context.groupLeaderId));
+                    if (leader) this.updateRelationship(character, leader, 1);
+                } else {
+                    this.addMemory(character, { type: "follow_leader", target: "unknown", value: 1 });
+                }
                 break;
             case "do_nothing":
             default:
@@ -316,8 +458,44 @@ const VisualPools = {
             ensureCharacterMindState(character);
 
             const context = this.buildDecisionContext(character, state);
+            const nearby = this.getNearbyNPCs(character, state);
+            let avgRelationship = 0;
+            let relationCount = 0;
+            let bestLeader = null;
+            let bestLeaderRelationship = -101;
+
+            for (const other of nearby) {
+                const rel = this.getRelationship(character, other);
+                avgRelationship += rel;
+                relationCount++;
+                if (rel > bestLeaderRelationship) {
+                    bestLeaderRelationship = rel;
+                    bestLeader = other;
+                }
+            }
+            if (relationCount > 0) avgRelationship /= relationCount;
+
+            const group = this.calculateGroupAffiliation(character);
+            context.groupType = group.groupType;
+            context.groupStrength = group.strength;
+            context.groupLeaderId = bestLeader ? bestLeader.id : null;
+
+            if (avgRelationship > 40 && bestLeader && bestLeader._lastAction) {
+                if (bestLeader._lastAction === "act_aggressively") {
+                    context.coordinationAction = "follow_leader_action";
+                } else if (bestLeader._lastAction === "trade" || bestLeader._lastAction === "support_group_action") {
+                    context.coordinationAction = "support_group_action";
+                } else {
+                    context.coordinationAction = "join_group_action";
+                }
+            } else if (avgRelationship < -20) {
+                context.coordinationAction = "do_nothing";
+            }
+
             const action = this.decideAction(character, context);
             this.executeAction(character, action, context);
+            character._lastAction = action;
+            character._lastActionTick = context.tick;
 
             // Example full cycle:
             // Villager with very negative opinion of bandits in a high-bandit world can score
@@ -329,6 +507,27 @@ const VisualPools = {
                 action: action,
                 tick: context.tick
             });
+
+            if (group.strength >= 35) {
+                this.logEvent("npc_group_formed", {
+                    characterId: character.id,
+                    groupType: group.groupType,
+                    strength: group.strength
+                });
+            }
+        }
+    });
+
+    EmergentManager.registerTickHandler("npc_social_reactions", 26, function(state) {
+        const characters = state && Array.isArray(state.characters) ? state.characters : [];
+        for (const actor of characters) {
+            if (!actor || !actor.isAlive) continue;
+            if (actor._lastActionTick !== state.ticks) continue;
+            this.applySocialInfluence(actor, actor._lastAction, state);
+
+            // Full chain reaction example:
+            // NPC A act_aggressively -> NPC B observes and gets opinion/relationship penalties ->
+            // over multiple ticks NPC B can shift to anti-bandit decisions and eventually faction-shift.
         }
     });
 })();
