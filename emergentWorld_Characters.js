@@ -166,6 +166,127 @@ const VisualPools = {
         character.opinions[targetKey] = Math.max(-100, Math.min(100, nextValue));
     };
 
+    EmergentManager.buildDecisionContext = function(character, state) {
+        const safeState = state || ($gameSystem && $gameSystem.emergentState ? $gameSystem.emergentState() : {});
+        const vars = safeState.variables || {};
+        const ownFaction = this.getFaction(character.faction) || null;
+
+        return {
+            tick: Number(safeState.ticks || 0),
+            foodSupply: Number(vars.foodSupply || 0),
+            prosperity: Number(vars.prosperity || 0),
+            banditPower: Number(vars.banditPower || 0),
+            ownFactionId: character.faction,
+            ownFactionWealth: ownFaction ? Number(ownFaction.wealth || 0) : 0,
+            ownFactionMilitary: ownFaction ? Number(ownFaction.military || 0) : 0,
+            banditOpinion: Number(character.opinions && character.opinions.bandits) || 0
+        };
+    };
+
+    EmergentManager.getAvailableActions = function(character) {
+        return [
+            "do_nothing",
+            "trade",
+            "avoid_conflict",
+            "seek_safety",
+            "join_faction_action",
+            "act_aggressively"
+        ];
+    };
+
+    EmergentManager.scoreAction = function(character, action, context) {
+        const banditOpinion = Number(context.banditOpinion || 0);
+        const isTrader = character.role === "Trader";
+        const isBanditAligned = character.faction === "bandits" || banditOpinion > 25;
+
+        switch (action) {
+            case "do_nothing":
+                return 5;
+            case "trade":
+                return (isTrader ? 30 : 8) + (context.foodSupply < 30 ? 10 : 0) + (context.prosperity < 25 ? 5 : 0);
+            case "avoid_conflict":
+                return 10 + (context.banditPower > 45 ? 15 : 0) + (banditOpinion < -20 ? 8 : 0);
+            case "seek_safety":
+                return 12 + (context.banditPower > 55 ? 20 : 0) + (context.foodSupply < 20 ? 8 : 0);
+            case "join_faction_action":
+                if (character.faction === "villagers" && context.banditPower > 50 && banditOpinion > 40) return 35;
+                if (character.faction === "villagers" && banditOpinion < -30 && context.prosperity > 30) return 24;
+                return 0;
+            case "act_aggressively":
+                return (isBanditAligned ? 24 : 6) + (character.role === "Thug" ? 14 : 0) + (context.banditPower > 50 ? 10 : 0);
+            default:
+                return 0;
+        }
+    };
+
+    EmergentManager.decideAction = function(character, context) {
+        const actions = this.getAvailableActions(character);
+        const scored = actions.map(action => ({
+            action: action,
+            score: this.scoreAction(character, action, context)
+        }));
+
+        scored.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return a.action.localeCompare(b.action);
+        });
+
+        const top = scored[0];
+        const second = scored[1];
+        const chooseSecondBest = second && Math.randomInt(100) < 15;
+        return chooseSecondBest ? second.action : top.action;
+    };
+
+    EmergentManager.executeAction = function(character, action, context) {
+        switch (action) {
+            case "seek_safety":
+                this.addMemory(character, { type: "seek_safety", target: "world", value: 5 });
+                this.updateOpinion(character, "bandits", -2);
+                break;
+            case "avoid_conflict":
+                this.addMemory(character, { type: "avoid_conflict", target: "bandits", value: 3 });
+                this.updateOpinion(character, "bandits", -1);
+                break;
+            case "trade":
+                this.addMemory(character, { type: "trade_activity", target: "merchants", value: 4 });
+                this.updateOpinion(character, "merchants", 2);
+                break;
+            case "join_faction_action": {
+                const previousFaction = character.faction;
+                let nextFaction = previousFaction;
+
+                if (previousFaction === "villagers" && context.banditPower > 50 && context.banditOpinion > 40) {
+                    nextFaction = "bandits";
+                } else if (previousFaction === "villagers" && context.banditOpinion < -30 && context.prosperity > 30) {
+                    nextFaction = "merchants";
+                }
+
+                if (nextFaction !== previousFaction) {
+                    character.faction = nextFaction;
+                    this.addMemory(character, { type: "faction_shift", target: nextFaction, value: 10 });
+                    this.logEvent("npc_faction_changed", {
+                        characterId: character.id,
+                        characterName: character.name,
+                        fromFaction: previousFaction,
+                        toFaction: nextFaction
+                    });
+                } else {
+                    this.addMemory(character, { type: "faction_loyalty", target: previousFaction, value: 2 });
+                }
+                break;
+            }
+            case "act_aggressively":
+                this.addMemory(character, { type: "aggressive_posture", target: "bandits", value: 6 });
+                this.updateOpinion(character, "bandits", character.faction === "bandits" ? 3 : -2);
+                break;
+            case "do_nothing":
+            default:
+                // Intentionally minimal for baseline stability.
+                this.addMemory(character, { type: "idle", target: "world", value: 0 });
+                break;
+        }
+    };
+
     EmergentManager.killCharacter = function(id, reason) {
         const char = this.getCharacter(id);
         if (char && char.isAlive) {
@@ -187,4 +308,27 @@ const VisualPools = {
             }
         }
     };
+
+    EmergentManager.registerTickHandler("character_decisions", 25, function(state) {
+        const characters = state && Array.isArray(state.characters) ? state.characters : [];
+        for (const character of characters) {
+            if (!character || !character.isAlive) continue;
+            ensureCharacterMindState(character);
+
+            const context = this.buildDecisionContext(character, state);
+            const action = this.decideAction(character, context);
+            this.executeAction(character, action, context);
+
+            // Example full cycle:
+            // Villager with very negative opinion of bandits in a high-bandit world can score
+            // "seek_safety" highest -> executeAction adds seek_safety memory and lowers bandit opinion.
+            this.logEvent("npc_decision", {
+                characterId: character.id,
+                characterName: character.name,
+                factionId: character.faction,
+                action: action,
+                tick: context.tick
+            });
+        }
+    });
 })();
