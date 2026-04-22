@@ -50,9 +50,43 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
     };
 
     //=============================================================================
+    // World init session flags (per new game; also window guard for any double-run)
+    //=============================================================================
+    window.EMERGENT_WORLD_INITIALIZED = window.EMERGENT_WORLD_INITIALIZED || false;
+
+    EmergentManager.resetWorldGenerationSession = function() {
+        this._worldCoreInitialized = false;
+        this._worldFactionsInitialized = false;
+        this._worldInitialNpcsSeeded = false;
+        this._worldHistoryInitialized = false;
+    };
+
+    /**
+     * Deterministic 32-bit-ish number for string character ids (save-safe modulo use).
+     */
+    EmergentManager.stableCharacterIdNumber = function(character) {
+        if (!character) return 0;
+        const id = character.id;
+        if (typeof id === "number" && isFinite(id)) return id;
+        if (typeof id === "string" && id.length) {
+            let h = 0;
+            for (let i = 0; i < id.length; i++) {
+                h = ((h << 5) - h) + id.charCodeAt(i);
+                h |= 0;
+            }
+            return Math.abs(h);
+        }
+        return 0;
+    };
+
+    //=============================================================================
     // 2. New Game Bootstrap (Centralized Initialization)
     //=============================================================================
     EmergentManager.bootstrapNewGame = function() {
+        if (window.EMERGENT_WORLD_INITIALIZED) {
+            return;
+        }
+
         // Core environment variables (always available in Core)
         this.generateCoreVariables();
 
@@ -63,20 +97,41 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
 
         // Characters (if the character layer is installed)
         // Preserves prior default spawn counts across the plugin set.
-        if (typeof this.generateCharacter === "function") {
+        if (typeof this.generateCharacter === "function" && !this._worldInitialNpcsSeeded) {
             for (let i = 0; i < 5; i++) this.generateCharacter("villagers", "Citizen");
             for (let i = 0; i < 3; i++) this.generateCharacter("merchants", "Trader");
             for (let i = 0; i < 4; i++) this.generateCharacter("bandits", "Thug");
+            this._worldInitialNpcsSeeded = true;
+            console.log("[World] Characters initialized once");
         }
 
         // Historical epochs (if the history layer is installed)
         if (typeof this.runHistoricalEpochs === "function") {
             this.runHistoricalEpochs(4);
         }
+
+        window.EMERGENT_WORLD_INITIALIZED = true;
+
+        const state = $gameSystem && $gameSystem.emergentState && $gameSystem.emergentState();
+        const countNPCs = (state && Array.isArray(state.characters)) ? state.characters.length : 0;
+
+        if (typeof this.bootstrapAutonomousNPCsIfReady === "function") {
+            this.bootstrapAutonomousNPCsIfReady(state);
+        }
+
+        const countAgents = (window.AgentManager && Array.isArray(AgentManager.agents))
+            ? AgentManager.agents.length
+            : 0;
+        console.log("[World] NPCs:", countNPCs);
+        console.log("[World] Agents:", countAgents);
     };
 
     const _DataManager_setupNewGame = DataManager.setupNewGame;
     DataManager.setupNewGame = function() {
+        window.EMERGENT_WORLD_INITIALIZED = false;
+        if (window.EmergentManager && typeof EmergentManager.resetWorldGenerationSession === "function") {
+            EmergentManager.resetWorldGenerationSession();
+        }
         _DataManager_setupNewGame.call(this);
         
         // Centralized initialization entrypoint (only override once across all files)
@@ -87,8 +142,17 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
     // 3. The Core Environment Generator
     //=============================================================================
     EmergentManager.generateCoreVariables = function() {
-        console.log("[Emergent World] Rolling new seed for core environment variables...");
-        const vars = $gameSystem.emergentState().variables;
+        if (window.EMERGENT_WORLD_INITIALIZED) {
+            return;
+        }
+        if (this._worldCoreInitialized) {
+            return;
+        }
+        const state = $gameSystem.emergentState();
+        if (state._emergentSessionSeed === undefined) {
+            state._emergentSessionSeed = Date.now() + Math.randomInt(1e6);
+        }
+        const vars = state.variables;
 
         // --- Core Resource Pressures (The Environment) ---
         vars.foodSupply = 40 + Math.randomInt(21);       // Range: 40 to 60
@@ -103,6 +167,8 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
 
         // --- Regional Political Pressures ---
         vars.aldenmereStability = 60 + Math.randomInt(31); // Range: 60 to 90
+        this._worldCoreInitialized = true;
+        console.log("[World] Core initialized once");
     };
 
     //=============================================================================

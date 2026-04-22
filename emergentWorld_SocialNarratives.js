@@ -254,16 +254,16 @@ Imported.EmergentWorld_SocialNarratives = true;
     EmergentManager.createSocialGroup = function(type, members) {
         const state = this.ensureSocialNarrativeState();
         if (!state) return null;
-        const validMembers = Array.isArray(members) ? members.filter(id => this.getCharacter(Number(id))) : [];
+        const validMembers = Array.isArray(members) ? members.filter(id => this.getCharacter(id)) : [];
         if (validMembers.length < 2) return null;
 
         const id = `group_${state.socialGroupIdCounter++}`;
-        const leaderId = Number(validMembers[0]);
+        const leaderId = validMembers[0];
         const normalizedType = String(type || "band");
         const group = {
             id: id,
             type: normalizedType,
-            members: [...new Set(validMembers.map(n => Number(n)))],
+            members: [...new Set(validMembers.map(n => n))],
             leaderId: leaderId,
             cohesion: 50,
             goal: this._groupGoalDescriptors[normalizedType] || "preserve group strength",
@@ -758,7 +758,7 @@ Imported.EmergentWorld_SocialNarratives = true;
         for (const shift of factionSwitches) {
             const data = shift.data || {};
             if (!data.characterId || !data.fromFaction || !data.toFaction || data.fromFaction === data.toFaction) continue;
-            const char = this.getCharacter(Number(data.characterId));
+            const char = this.getCharacter(data.characterId);
             if (!char) continue;
             const betrayalSignal = (Number(char.opinions && char.opinions[data.fromFaction]) || 0) > 10;
             if (!betrayalSignal) {

@@ -44,7 +44,10 @@ Imported.EmergentWorld_AutonomousAgent = true;
 
         generateIntent(state) {
             const tick = Number(state && state.ticks || 0);
-            const charId = Number(this.baseCharacter && this.baseCharacter.id || 0);
+            const em = window.EmergentManager;
+            const charId = (em && typeof em.stableCharacterIdNumber === "function")
+                ? em.stableCharacterIdNumber(this.baseCharacter)
+                : (Number(this.baseCharacter && this.baseCharacter.id) || 0);
 
             // Deterministic "occasional" intent generation to keep behavior stable while still varied.
             if (Number(this.personality.agreeableness || 0) <= 2) {

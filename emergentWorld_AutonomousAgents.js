@@ -50,11 +50,13 @@ Imported.EmergentWorld_AutonomousAgents = true;
         }
 
         npc.mode = "AUTONOMOUS";
+        const seed = (window.EmergentManager && typeof EmergentManager.stableCharacterIdNumber === "function")
+            ? EmergentManager.stableCharacterIdNumber(npc)
+            : (Number(npc.id) || 0);
         let agent = npc.agent || AgentManager.getAgentByCharacterId(npc.id);
         if (!agent) {
             agent = new AutonomousAgent(npc);
-            // Deterministic baseline personality derived from id for save-safe repeatability.
-            const id = Number(npc.id || 0);
+            const id = seed;
             agent.personality.extraversion = 3 + (id % 6); // 3..8
             agent.personality.agreeableness = 2 + ((id + 3) % 7); // 2..8
             agent.personality.openness = 4 + (id % 4);
@@ -109,20 +111,46 @@ Imported.EmergentWorld_AutonomousAgents = true;
         }
     };
 
-    EmergentManager.bootstrapAutonomousTestAgent = function(state) {
+    function npcQualifiesForAutonomyBootstrap(npc, roleRemaining) {
+        if (!npc || !npc.isAlive) return false;
+        if (npc.role === "Leader") return true;
+        const cap = roleRemaining[npc.role];
+        if (cap > 0) {
+            roleRemaining[npc.role] = cap - 1;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Called once at end of world bootstrap (if present) and idempotent on tick until done.
+     * Promotes multiple qualifying NPCs and relies on AgentManager for duplicate prevention.
+     */
+    EmergentManager.bootstrapAutonomousNPCsIfReady = function(state) {
         const safeState = state || _ensureState();
-        if (!safeState || safeState._autonomousInitialized) return;
+        if (!safeState || !window.AutonomousAgent || !window.AgentManager) return;
+        if (safeState._autonomousBootstrapDone) return;
+
         const chars = Array.isArray(safeState.characters) ? safeState.characters : [];
         if (chars.length === 0) return;
 
-        // Step 9 test case: promote one apex NPC (leader preferred) only once.
-        const candidate = chars.find(c => c && c.isAlive && c.role === "Leader")
-            || chars.find(c => c && c.isAlive);
-        if (!candidate) return;
-        this.makeAutonomous(candidate);
+        const roleRemaining = { Trader: 3, Thug: 2, Citizen: 2 };
+        for (const npc of chars) {
+            if (!npc || !npc.isAlive) continue;
+            if (npc.mode === "AUTONOMOUS" && AgentManager.getAgentByCharacterId(npc.id)) {
+                continue;
+            }
+            if (npcQualifiesForAutonomyBootstrap(npc, roleRemaining)) {
+                this.makeAutonomous(npc);
+            }
+        }
         safeState._autonomousInitialized = true;
         safeState._autonomousBootstrapDone = true;
-        console.log("[Agent] Bootstrapped autonomous NPC:", candidate.name, `(id=${candidate.id})`);
+        console.log("[Agent] Autonomous bootstrap complete. Agents registered:", AgentManager.agents.length);
+    };
+
+    EmergentManager.bootstrapAutonomousTestAgent = function(state) {
+        this.bootstrapAutonomousNPCsIfReady(state);
     };
 
     // Additive integration into main simulation loop via scheduler.
@@ -137,7 +165,7 @@ Imported.EmergentWorld_AutonomousAgents = true;
             if (character.mode === undefined) character.mode = "REACTIVE";
         }
 
-        this.bootstrapAutonomousTestAgent(safeState);
+        this.bootstrapAutonomousNPCsIfReady(safeState);
         this.rebuildAutonomousAgents(safeState);
         if (!this.isAgentSystemEnabled()) return;
         if (!window.AgentManager || typeof AgentManager.update !== "function") return;
@@ -149,8 +177,10 @@ Imported.EmergentWorld_AutonomousAgents = true;
             console.log(null);
             return null;
         }
-        const targetId = Number(id);
-        const agent = AgentManager.agents.find(a => a && a.baseCharacter && Number(a.baseCharacter.id) === targetId) || null;
+        const agent = AgentManager.agents.find(
+            a => a && a.baseCharacter
+                && (a.baseCharacter.id === id || String(a.baseCharacter.id) === String(id))
+        ) || null;
         console.log(agent);
         return agent;
     };

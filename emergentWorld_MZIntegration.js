@@ -93,7 +93,7 @@
 
     // 3. NPC Update: Dynamic Dialogue Generation
     PluginManager.registerCommand(pluginName, "SpeakCharacterMemory", args => {
-        const char = EmergentManager.getCharacter(Number(args.charId));
+        const char = EmergentManager.getCharacter(args.charId);
 
         if (!char) {
             $gameMessage.add("..."); // Fallback if character isn't spawned

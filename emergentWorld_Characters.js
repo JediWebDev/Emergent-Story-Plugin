@@ -73,6 +73,30 @@ const VisualPools = {
         return names[Math.randomInt(names.length)];
     };
 
+    EmergentManager.generateUniqueCharacterId = function(name, role, state) {
+        if (!state) {
+            return `unknown_role_${Date.now()}_0`;
+        }
+        if (state._emergentSessionSeed === undefined) {
+            state._emergentSessionSeed = Date.now() + Math.randomInt(1e6);
+        }
+        if (state._emergentUsedCharacterIdKeys === undefined) {
+            state._emergentUsedCharacterIdKeys = {};
+        }
+        const index = state.characterIdCounter;
+        const safeName = String(name || "unknown").replace(/[^a-zA-Z0-9]+/g, "_");
+        const safeRole = String(role || "none").replace(/[^a-zA-Z0-9]+/g, "_");
+        const seed = String(state._emergentSessionSeed);
+        let id = `${safeName}_${safeRole}_${seed}_${index}`;
+        let n = 0;
+        while (state._emergentUsedCharacterIdKeys[id] && n < 1e4) {
+            n++;
+            id = `${safeName}_${safeRole}_${seed}_${index}_x${n}`;
+        }
+        state._emergentUsedCharacterIdKeys[id] = true;
+        return id;
+    };
+
     // REPLACED: spawnCharacter is now generateCharacter
     EmergentManager.generateCharacter = function(factionId, role) {
         const state = $gameSystem.emergentState();
@@ -86,16 +110,18 @@ const VisualPools = {
             state.characters = [];
             state.characterIdCounter = 0;
         }
+        if (state._emergentUsedCharacterIdKeys === undefined) {
+            state._emergentUsedCharacterIdKeys = {};
+        }
 
         // 1. Grab the correct visual pool for this faction
         const pool = VisualPools[factionId] || [{ name: "Actor1", index: 0 }]; // Fallback
         
         // 2. Pick a random look from that pool
         const look = pool[Math.randomInt(pool.length)];
-        
-        // Generate their data
-        const id = state.characterIdCounter++;
         const generatedName = this.generateRandomName(factionId);
+        const id = this.generateUniqueCharacterId(generatedName, role, state);
+        state.characterIdCounter++;
 
         const newChar = {
             id: id,
@@ -120,10 +146,14 @@ const VisualPools = {
         return newChar;
     };
 
-    EmergentManager.getCharacter = function(id) {
+    EmergentManager.getCharacter = function(lookup) {
         const state = $gameSystem.emergentState();
         if (!state.characters) return null;
-        return state.characters.find(c => c.id === id);
+        if (lookup === undefined || lookup === null) return null;
+        const direct = state.characters.find(c => c && c.id === lookup);
+        if (direct) return direct;
+        const s = String(lookup);
+        return state.characters.find(c => c && String(c.id) === s) || null;
     };
 
     EmergentManager.getCharactersByFaction = function(factionId) {
@@ -415,7 +445,7 @@ const VisualPools = {
             case "follow_leader_action":
                 if (context.groupLeaderId !== undefined && context.groupLeaderId !== null) {
                     this.addMemory(character, { type: "follow_leader", target: String(context.groupLeaderId), value: 3 });
-                    const leader = this.getCharacter(Number(context.groupLeaderId));
+                    const leader = this.getCharacter(context.groupLeaderId);
                     if (leader) this.updateRelationship(character, leader, 1);
                 } else {
                     this.addMemory(character, { type: "follow_leader", target: "unknown", value: 1 });
