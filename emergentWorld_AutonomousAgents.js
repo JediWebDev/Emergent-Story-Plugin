@@ -19,6 +19,22 @@ Imported.EmergentWorld_AutonomousAgents = true;
 (function() {
     "use strict";
 
+    /** Local-only: personality modulo seed; not used as identity or registry keys. */
+    function _personalityModFromStringNpcId(s) {
+        if (typeof s !== "string" || !s.length) {
+            if (s != null) {
+                console.warn("[WorldBootstrap] makeAutonomous expected string npc.id for personality seed, got:", typeof s);
+            }
+            return 0;
+        }
+        let h = 0;
+        for (let i = 0; i < s.length; i++) {
+            h = ((h << 5) - h) + s.charCodeAt(i);
+            h |= 0;
+        }
+        return Math.abs(h);
+    }
+
     const _ensureState = function() {
         if (!$gameSystem || !$gameSystem.emergentState) return null;
         const state = $gameSystem.emergentState();
@@ -50,9 +66,7 @@ Imported.EmergentWorld_AutonomousAgents = true;
         }
 
         npc.mode = "AUTONOMOUS";
-        const seed = (window.EmergentManager && typeof EmergentManager.stableCharacterIdNumber === "function")
-            ? EmergentManager.stableCharacterIdNumber(npc)
-            : (Number(npc.id) || 0);
+        const seed = _personalityModFromStringNpcId(npc.id);
         let agent = npc.agent || AgentManager.getAgentByCharacterId(npc.id);
         if (!agent) {
             agent = new AutonomousAgent(npc);
@@ -177,10 +191,11 @@ Imported.EmergentWorld_AutonomousAgents = true;
             console.log(null);
             return null;
         }
-        const agent = AgentManager.agents.find(
-            a => a && a.baseCharacter
-                && (a.baseCharacter.id === id || String(a.baseCharacter.id) === String(id))
-        ) || null;
+        if (typeof id !== "string") {
+            console.warn("[WorldBootstrap] debugAgent expected string npc.id, got:", typeof id, id);
+            return null;
+        }
+        const agent = AgentManager.agents.find(a => a && a.baseCharacter && a.baseCharacter.id === id) || null;
         console.log(agent);
         return agent;
     };

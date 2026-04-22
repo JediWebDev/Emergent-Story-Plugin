@@ -55,9 +55,6 @@ Imported.EmergentWorld_HistoryGen = true;
         if (window.EMERGENT_WORLD_INITIALIZED) {
             return;
         }
-        if (this._worldHistoryInitialized) {
-            return;
-        }
         const state = $gameSystem.emergentState();
         state.worldHistory.push(`--- The Chronicles of Aldenmerre ---`);
 
@@ -167,8 +164,6 @@ Imported.EmergentWorld_HistoryGen = true;
             church.name = this.generateRandomName("human");
             mages.name = this.generateRandomName("human");
         }
-        this._worldHistoryInitialized = true;
-        console.log("[World] History initialized once");
         console.log("[History] Aldenmerre's procedural history has been written.");
         console.log(state.worldHistory);
     };

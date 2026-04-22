@@ -75,7 +75,8 @@ const VisualPools = {
 
     EmergentManager.generateUniqueCharacterId = function(name, role, state) {
         if (!state) {
-            return `unknown_role_${Date.now()}_0`;
+            console.warn("[WorldBootstrap] generateUniqueCharacterId called without state; using placeholder id.");
+            return "unknown_unknown_0_0";
         }
         if (state._emergentSessionSeed === undefined) {
             state._emergentSessionSeed = Date.now() + Math.randomInt(1e6);
@@ -83,16 +84,23 @@ const VisualPools = {
         if (state._emergentUsedCharacterIdKeys === undefined) {
             state._emergentUsedCharacterIdKeys = {};
         }
-        const index = state.characterIdCounter;
         const safeName = String(name || "unknown").replace(/[^a-zA-Z0-9]+/g, "_");
         const safeRole = String(role || "none").replace(/[^a-zA-Z0-9]+/g, "_");
         const seed = String(state._emergentSessionSeed);
-        let id = `${safeName}_${safeRole}_${seed}_${index}`;
-        let n = 0;
-        while (state._emergentUsedCharacterIdKeys[id] && n < 1e4) {
-            n++;
-            id = `${safeName}_${safeRole}_${seed}_${index}_x${n}`;
+        let index = Number(state.characterIdCounter) || 0;
+        let id;
+        for (let tries = 0; tries < 10000; tries++) {
+            id = `${safeName}_${safeRole}_${seed}_${index}`;
+            if (!state._emergentUsedCharacterIdKeys[id]) {
+                state._emergentUsedCharacterIdKeys[id] = true;
+                state.characterIdCounter = index + 1;
+                return id;
+            }
+            index++;
         }
+        console.warn("[WorldBootstrap] Character id collision exhaustion; bumping index.");
+        state.characterIdCounter = index + 1;
+        id = `${safeName}_${safeRole}_${seed}_${index}`;
         state._emergentUsedCharacterIdKeys[id] = true;
         return id;
     };
@@ -121,8 +129,10 @@ const VisualPools = {
         const look = pool[Math.randomInt(pool.length)];
         const generatedName = this.generateRandomName(factionId);
         const id = this.generateUniqueCharacterId(generatedName, role, state);
-        state.characterIdCounter++;
 
+        if (typeof id !== "string") {
+            console.warn("[WorldBootstrap] generateCharacter expected string id from generateUniqueCharacterId, got:", typeof id, id);
+        }
         const newChar = {
             id: id,
             name: generatedName,
@@ -150,10 +160,10 @@ const VisualPools = {
         const state = $gameSystem.emergentState();
         if (!state.characters) return null;
         if (lookup === undefined || lookup === null) return null;
-        const direct = state.characters.find(c => c && c.id === lookup);
-        if (direct) return direct;
-        const s = String(lookup);
-        return state.characters.find(c => c && String(c.id) === s) || null;
+        if (typeof lookup !== "string") {
+            console.warn("[WorldBootstrap] getCharacter expected string npc.id, got:", typeof lookup, lookup);
+        }
+        return state.characters.find(c => c && c.id === lookup) || null;
     };
 
     EmergentManager.getCharactersByFaction = function(factionId) {

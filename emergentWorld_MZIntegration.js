@@ -28,9 +28,10 @@
  * @desc Makes an NPC state their most recent memory or emergent history.
  *
  * @arg charId
- * @text Character ID
- * @type number
- * @default 0
+ * @text Character ID (string npc.id)
+ * @type string
+ * @default emergent_npc_id
+ * @desc Replace with the full string npc.id from console after a new game (WorldBootstrap logs).
  *
  * @command CheckDragonEcho
  * @text Check Dragon Echo Level
@@ -93,7 +94,12 @@
 
     // 3. NPC Update: Dynamic Dialogue Generation
     PluginManager.registerCommand(pluginName, "SpeakCharacterMemory", args => {
-        const char = EmergentManager.getCharacter(args.charId);
+        let cid = args.charId;
+        if (cid != null && typeof cid !== "string") {
+            console.warn("[WorldBootstrap] SpeakCharacterMemory charId should be string npc.id, got:", typeof cid);
+            cid = String(cid);
+        }
+        const char = EmergentManager.getCharacter(cid);
 
         if (!char) {
             $gameMessage.add("..."); // Fallback if character isn't spawned

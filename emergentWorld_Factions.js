@@ -30,9 +30,6 @@ Imported.EmergentWorld_Factions = true;
         if (window.EMERGENT_WORLD_INITIALIZED) {
             return;
         }
-        if (this._worldFactionsInitialized) {
-            return;
-        }
         const state = $gameSystem.emergentState();
         
         // Generate the Core Factions utilizing Ardessian Lore Templates
@@ -47,8 +44,6 @@ Imported.EmergentWorld_Factions = true;
         
         // Now that the factions are generated, calculate the starting global values
         this.recalculateGlobalMilitary();
-        this._worldFactionsInitialized = true;
-        console.log("[World] Factions initialized once");
     };
 
     EmergentManager.rollFactionStats = function(name, realm, baseTrait) {

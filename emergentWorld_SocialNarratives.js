@@ -254,7 +254,14 @@ Imported.EmergentWorld_SocialNarratives = true;
     EmergentManager.createSocialGroup = function(type, members) {
         const state = this.ensureSocialNarrativeState();
         if (!state) return null;
-        const validMembers = Array.isArray(members) ? members.filter(id => this.getCharacter(id)) : [];
+        const validMembers = Array.isArray(members) ? members.filter((id) => {
+            if (id == null) return false;
+            if (typeof id !== "string") {
+                console.warn("[WorldBootstrap] createSocialGroup member id expected string npc.id, got:", typeof id, id);
+                return false;
+            }
+            return !!this.getCharacter(id);
+        }) : [];
         if (validMembers.length < 2) return null;
 
         const id = `group_${state.socialGroupIdCounter++}`;
@@ -1006,7 +1013,7 @@ Imported.EmergentWorld_SocialNarratives = true;
         }
 
         const budget = state.relationshipUpdateBudgets[a.id];
-        const pairKey = [a.id, b.id].sort((x, y) => x - y).join("|");
+        const pairKey = [String(a.id), String(b.id)].sort().join("|");
         const cooldownTick = Number(state.relationshipPairCooldowns[pairKey] || -9999);
         const isPairCoolingDown = (currentTick - cooldownTick) < RELATIONSHIP_PAIR_COOLDOWN_TICKS;
 
@@ -1033,7 +1040,10 @@ Imported.EmergentWorld_SocialNarratives = true;
         const state = this.ensureSocialNarrativeState();
         if (!state) return _updateOpinion.call(this, character, target, value);
 
-        const charId = Number(character.id);
+        if (typeof character.id !== "string") {
+            console.warn("[WorldBootstrap] updateOpinion expected string npc.id, got:", typeof character.id, character.id);
+        }
+        const charId = String(character.id);
         const targetKey = String(target);
         const sourceKey = String(source || "unknown");
         const currentTick = Number(state.ticks || 0);

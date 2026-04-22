@@ -13,6 +13,22 @@ Imported.EmergentWorld_AutonomousAgent = true;
 (function() {
     "use strict";
 
+    /** Local-only: deterministic int for modulo scheduling; never an identity key. */
+    function _agentMathHashFromStringId(s) {
+        if (typeof s !== "string" || !s.length) {
+            if (s != null) {
+                console.warn("[WorldBootstrap] AutonomousAgent expected string npc.id for local math hash, got:", typeof s);
+            }
+            return 0;
+        }
+        let h = 0;
+        for (let i = 0; i < s.length; i++) {
+            h = ((h << 5) - h) + s.charCodeAt(i);
+            h |= 0;
+        }
+        return Math.abs(h);
+    }
+
     class AutonomousAgent {
         constructor(baseCharacter) {
             this.baseCharacter = baseCharacter;
@@ -44,10 +60,7 @@ Imported.EmergentWorld_AutonomousAgent = true;
 
         generateIntent(state) {
             const tick = Number(state && state.ticks || 0);
-            const em = window.EmergentManager;
-            const charId = (em && typeof em.stableCharacterIdNumber === "function")
-                ? em.stableCharacterIdNumber(this.baseCharacter)
-                : (Number(this.baseCharacter && this.baseCharacter.id) || 0);
+            const charId = _agentMathHashFromStringId(this.baseCharacter && this.baseCharacter.id);
 
             // Deterministic "occasional" intent generation to keep behavior stable while still varied.
             if (Number(this.personality.agreeableness || 0) <= 2) {

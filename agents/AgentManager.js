@@ -23,16 +23,14 @@ Imported.EmergentWorld_AgentManager = true;
             this._agents = Array.isArray(value) ? value : [];
         }
 
-        static _sameAgentId(a, b) {
-            if (a === b) return true;
-            if (a == null || b == null) return false;
-            return a === b || String(a) === String(b);
-        }
-
         static register(agent) {
             if (!agent || !agent.baseCharacter) return;
             const id = agent.baseCharacter.id;
-            if (this.agents.some(a => a && a.baseCharacter && this._sameAgentId(a.baseCharacter.id, id))) {
+            if (typeof id !== "string") {
+                console.warn("[WorldBootstrap] AgentManager.register expected string npc.id, got:", typeof id, id);
+                return;
+            }
+            if (this.agents.some(a => a && a.baseCharacter && a.baseCharacter.id === id)) {
                 console.log("[AgentManager] Duplicate agent prevented:", id);
                 return;
             }
@@ -40,8 +38,11 @@ Imported.EmergentWorld_AgentManager = true;
         }
 
         static getAgentByCharacterId(characterId) {
-            return this.agents.find(a => a && a.baseCharacter
-                && this._sameAgentId(a.baseCharacter.id, characterId)) || null;
+            if (characterId != null && typeof characterId !== "string") {
+                console.warn("[WorldBootstrap] getAgentByCharacterId expected string npc.id, got:", typeof characterId, characterId);
+                return null;
+            }
+            return this.agents.find(a => a && a.baseCharacter && a.baseCharacter.id === characterId) || null;
         }
 
         static update(state) {
