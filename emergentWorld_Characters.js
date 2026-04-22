@@ -49,20 +49,6 @@ const VisualPools = {
     };
 
     //=============================================================================
-    // DataManager Hook (Procedural Spawning on New Game)
-    //=============================================================================
-    const _DataManager_setupNewGame = DataManager.setupNewGame;
-    DataManager.setupNewGame = function() {
-        _DataManager_setupNewGame.call(this);
-        
-        // Instead of hardcoding names like "Alden", we ask the engine to generate
-        // a pool of "souls" for Aerosys to bind to when the map loads.
-        for(let i = 0; i < 5; i++) EmergentManager.generateCharacter("villagers", "Citizen");
-        for(let i = 0; i < 3; i++) EmergentManager.generateCharacter("merchants", "Trader");
-        for(let i = 0; i < 4; i++) EmergentManager.generateCharacter("bandits", "Thug");
-    };
-
-    //=============================================================================
     // Character API
     //=============================================================================
     

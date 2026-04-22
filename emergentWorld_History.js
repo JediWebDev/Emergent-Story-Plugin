@@ -166,18 +166,4 @@ Imported.EmergentWorld_HistoryGen = true;
         console.log(state.worldHistory);
     };
 
-    //=============================================================================
-    // Intercept New Game Initialization
-    //=============================================================================
-    const _DataManager_setupNewGame = DataManager.setupNewGame;
-    DataManager.setupNewGame = function() {
-        _DataManager_setupNewGame.call(this);
-        
-        // 1. Generate the present-day NPCs
-        for(let i = 0; i < 5; i++) EmergentManager.generateCharacter("villagers", "Citizen");
-        for(let i = 0; i < 3; i++) EmergentManager.generateCharacter("merchants", "Trader");
-        
-        // 2. RUN THE EPOCH ENGINE (Generate 4 eras of history)
-        EmergentManager.runHistoricalEpochs(4);
-    };
 })();

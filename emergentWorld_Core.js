@@ -41,14 +41,37 @@ var EmergentManager = EmergentManager || {};
     };
 
     //=============================================================================
-    // 2. Procedural Generation Hook (Fires ONCE at New Game)
+    // 2. New Game Bootstrap (Centralized Initialization)
     //=============================================================================
+    EmergentManager.bootstrapNewGame = function() {
+        // Core environment variables (always available in Core)
+        this.generateCoreVariables();
+
+        // Factions (if the faction layer is installed)
+        if (typeof this.generateStartingFactions === "function") {
+            this.generateStartingFactions();
+        }
+
+        // Characters (if the character layer is installed)
+        // Preserves prior default spawn counts across the plugin set.
+        if (typeof this.generateCharacter === "function") {
+            for (let i = 0; i < 5; i++) this.generateCharacter("villagers", "Citizen");
+            for (let i = 0; i < 3; i++) this.generateCharacter("merchants", "Trader");
+            for (let i = 0; i < 4; i++) this.generateCharacter("bandits", "Thug");
+        }
+
+        // Historical epochs (if the history layer is installed)
+        if (typeof this.runHistoricalEpochs === "function") {
+            this.runHistoricalEpochs(4);
+        }
+    };
+
     const _DataManager_setupNewGame = DataManager.setupNewGame;
     DataManager.setupNewGame = function() {
         _DataManager_setupNewGame.call(this);
         
-        // Roll the initial world environment
-        EmergentManager.generateCoreVariables();
+        // Centralized initialization entrypoint (only override once across all files)
+        EmergentManager.bootstrapNewGame();
     };
 
     //=============================================================================

@@ -24,17 +24,6 @@ Imported.EmergentWorld_Factions = true;
     };
 
     //=============================================================================
-    // 2. Procedural Generation Hook (Fires ONCE at New Game)
-    //=============================================================================
-    const _DataManager_setupNewGame = DataManager.setupNewGame;
-    DataManager.setupNewGame = function() {
-        _DataManager_setupNewGame.call(this);
-        
-        // Call the procedural generator
-        EmergentManager.generateStartingFactions();
-    };
-
-    //=============================================================================
     // 3. The Faction Generator
     //=============================================================================
     EmergentManager.generateStartingFactions = function() {
