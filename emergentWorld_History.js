@@ -55,6 +55,9 @@ Imported.EmergentWorld_HistoryGen = true;
         if (window.EMERGENT_WORLD_INITIALIZED) {
             return;
         }
+        if (!window.EMERGENT_WORLD_BOOTSTRAPPING) {
+            console.warn("[WorldBootstrap] Subsystem called outside bootstrap phase:", "runHistoricalEpochs");
+        }
         const state = $gameSystem.emergentState();
         state.worldHistory.push(`--- The Chronicles of Aldenmerre ---`);
 

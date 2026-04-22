@@ -30,6 +30,9 @@ Imported.EmergentWorld_Factions = true;
         if (window.EMERGENT_WORLD_INITIALIZED) {
             return;
         }
+        if (!window.EMERGENT_WORLD_BOOTSTRAPPING) {
+            console.warn("[WorldBootstrap] Subsystem called outside bootstrap phase:", "generateStartingFactions");
+        }
         const state = $gameSystem.emergentState();
         
         // Generate the Core Factions utilizing Ardessian Lore Templates

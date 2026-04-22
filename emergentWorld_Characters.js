@@ -75,34 +75,46 @@ const VisualPools = {
 
     EmergentManager.generateUniqueCharacterId = function(name, role, state) {
         if (!state) {
-            console.warn("[WorldBootstrap] generateUniqueCharacterId called without state; using placeholder id.");
-            return "unknown_unknown_0_0";
+            console.warn("[WorldBootstrap] generateUniqueCharacterId called without state");
+            return "unknown_unknown_0";
         }
         if (state._emergentSessionSeed === undefined) {
             state._emergentSessionSeed = Date.now() + Math.randomInt(1e6);
         }
-        if (state._emergentUsedCharacterIdKeys === undefined) {
+        if (!state._emergentUsedCharacterIdKeys) {
             state._emergentUsedCharacterIdKeys = {};
         }
-        const safeName = String(name || "unknown").replace(/[^a-zA-Z0-9]+/g, "_");
-        const safeRole = String(role || "none").replace(/[^a-zA-Z0-9]+/g, "_");
+        if (state.characterIdCounter === undefined || state.characterIdCounter === null) {
+            state.characterIdCounter = 0;
+        }
+        const safeName = String(name != null ? name : "unknown").replace(/[^a-zA-Z0-9]+/g, "_");
+        const safeRole = String(role != null ? role : "none").replace(/[^a-zA-Z0-9]+/g, "_");
         const seed = String(state._emergentSessionSeed);
-        let index = Number(state.characterIdCounter) || 0;
-        let id;
-        for (let tries = 0; tries < 10000; tries++) {
-            id = `${safeName}_${safeRole}_${seed}_${index}`;
+        const MAX_COLLISION = 100000;
+        for (let guard = 0; guard < MAX_COLLISION; guard++) {
+            const id = `${safeName}_${safeRole}_${seed}_${state.characterIdCounter}`;
+            state.characterIdCounter++;
             if (!state._emergentUsedCharacterIdKeys[id]) {
                 state._emergentUsedCharacterIdKeys[id] = true;
-                state.characterIdCounter = index + 1;
-                return id;
+                return String(id);
             }
-            index++;
         }
-        console.warn("[WorldBootstrap] Character id collision exhaustion; bumping index.");
-        state.characterIdCounter = index + 1;
-        id = `${safeName}_${safeRole}_${seed}_${index}`;
-        state._emergentUsedCharacterIdKeys[id] = true;
-        return id;
+        console.error("[WorldBootstrap] generateUniqueCharacterId: collision guard exceeded; scanning counter");
+        let extra = 0;
+        while (extra < MAX_COLLISION) {
+            const id = `${safeName}_${safeRole}_${seed}_${state.characterIdCounter}`;
+            state.characterIdCounter++;
+            extra++;
+            if (!state._emergentUsedCharacterIdKeys[id]) {
+                state._emergentUsedCharacterIdKeys[id] = true;
+                return String(id);
+            }
+        }
+        console.error("[WorldBootstrap] generateUniqueCharacterId: unable to allocate id");
+        const emergencyId = `unknown_unknown_${seed}_${state.characterIdCounter}`;
+        state.characterIdCounter++;
+        state._emergentUsedCharacterIdKeys[emergencyId] = true;
+        return String(emergencyId);
     };
 
     // REPLACED: spawnCharacter is now generateCharacter
@@ -131,7 +143,7 @@ const VisualPools = {
         const id = this.generateUniqueCharacterId(generatedName, role, state);
 
         if (typeof id !== "string") {
-            console.warn("[WorldBootstrap] generateCharacter expected string id from generateUniqueCharacterId, got:", typeof id, id);
+            console.warn("[WorldBootstrap] Non-string ID detected:", id);
         }
         const newChar = {
             id: id,
@@ -161,7 +173,7 @@ const VisualPools = {
         if (!state.characters) return null;
         if (lookup === undefined || lookup === null) return null;
         if (typeof lookup !== "string") {
-            console.warn("[WorldBootstrap] getCharacter expected string npc.id, got:", typeof lookup, lookup);
+            console.warn("[WorldBootstrap] Non-string ID detected:", lookup);
         }
         return state.characters.find(c => c && c.id === lookup) || null;
     };

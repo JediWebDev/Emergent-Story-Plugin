@@ -257,7 +257,7 @@ Imported.EmergentWorld_SocialNarratives = true;
         const validMembers = Array.isArray(members) ? members.filter((id) => {
             if (id == null) return false;
             if (typeof id !== "string") {
-                console.warn("[WorldBootstrap] createSocialGroup member id expected string npc.id, got:", typeof id, id);
+                console.warn("[WorldBootstrap] Non-string ID detected:", id);
                 return false;
             }
             return !!this.getCharacter(id);
@@ -1041,7 +1041,7 @@ Imported.EmergentWorld_SocialNarratives = true;
         if (!state) return _updateOpinion.call(this, character, target, value);
 
         if (typeof character.id !== "string") {
-            console.warn("[WorldBootstrap] updateOpinion expected string npc.id, got:", typeof character.id, character.id);
+            console.warn("[WorldBootstrap] Non-string ID detected:", character.id);
         }
         const charId = String(character.id);
         const targetKey = String(target);

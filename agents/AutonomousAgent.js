@@ -15,12 +15,12 @@ Imported.EmergentWorld_AutonomousAgent = true;
 
     /** Local-only: deterministic int for modulo scheduling; never an identity key. */
     function _agentMathHashFromStringId(s) {
-        if (typeof s !== "string" || !s.length) {
-            if (s != null) {
-                console.warn("[WorldBootstrap] AutonomousAgent expected string npc.id for local math hash, got:", typeof s);
+            if (typeof s !== "string" || !s.length) {
+                if (s != null) {
+                    console.warn("[WorldBootstrap] Non-string ID detected:", s);
+                }
+                return 0;
             }
-            return 0;
-        }
         let h = 0;
         for (let i = 0; i < s.length; i++) {
             h = ((h << 5) - h) + s.charCodeAt(i);

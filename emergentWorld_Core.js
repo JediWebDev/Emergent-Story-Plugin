@@ -53,6 +53,7 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
     // World init: single global guard (per new game session)
     //=============================================================================
     window.EMERGENT_WORLD_INITIALIZED = window.EMERGENT_WORLD_INITIALIZED || false;
+    window.EMERGENT_WORLD_BOOTSTRAPPING = window.EMERGENT_WORLD_BOOTSTRAPPING || false;
 
     //=============================================================================
     // Single bootstrap orchestrator (world gen then agent activation)
@@ -63,6 +64,10 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
         if (window.EMERGENT_WORLD_INITIALIZED) {
             return;
         }
+        if (window.EMERGENT_WORLD_BOOTSTRAPPING) {
+            console.warn("[WorldBootstrap] Bootstrap already in progress. Aborting duplicate run.");
+            return;
+        }
         const em = window.EmergentManager;
         if (!em) return;
 
@@ -70,39 +75,63 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
         if (!resolvedState && $gameSystem && $gameSystem.emergentState) {
             resolvedState = $gameSystem.emergentState();
         }
-
-        em.generateCoreVariables();
-        if (typeof em.generateStartingFactions === "function") {
-            em.generateStartingFactions();
-        }
-        if (typeof em.generateCharacter === "function") {
-            for (let i = 0; i < 5; i++) em.generateCharacter("villagers", "Citizen");
-            for (let j = 0; j < 3; j++) em.generateCharacter("merchants", "Trader");
-            for (let k = 0; k < 4; k++) em.generateCharacter("bandits", "Thug");
-        }
-        if (typeof em.runHistoricalEpochs === "function") {
-            em.runHistoricalEpochs(4);
-        }
-        if (typeof em.bootstrapAutonomousNPCsIfReady === "function") {
-            em.bootstrapAutonomousNPCsIfReady(resolvedState);
+        if (!resolvedState) {
+            console.error("[WorldBootstrap] Bootstrap failed: no emergent state");
+            return;
         }
 
-        window.EMERGENT_WORLD_INITIALIZED = true;
+        window.EMERGENT_WORLD_BOOTSTRAPPING = true;
+        try {
+            em.generateCoreVariables();
+            if (resolvedState._emergentSessionSeed === undefined || resolvedState._emergentSessionSeed === null) {
+                console.error("[WorldBootstrap] Core failed: missing session seed");
+            }
 
-        const npcCount = (resolvedState && Array.isArray(resolvedState.characters))
-            ? resolvedState.characters.length
-            : 0;
-        const agentCount = (window.AgentManager && Array.isArray(AgentManager.agents))
-            ? AgentManager.agents.length
-            : 0;
-        const sessionSeed = resolvedState && resolvedState._emergentSessionSeed !== undefined
-            ? resolvedState._emergentSessionSeed
-            : "(unset)";
+            if (typeof em.generateStartingFactions === "function") {
+                em.generateStartingFactions();
+                if (!resolvedState.factions || Object.keys(resolvedState.factions).length === 0) {
+                    console.error("[WorldBootstrap] Factions missing or empty");
+                }
+            }
 
-        console.log("[WorldBootstrap] Initialization complete");
-        console.log("[WorldBootstrap] NPCs:", npcCount);
-        console.log("[WorldBootstrap] Agents:", agentCount);
-        console.log("[WorldBootstrap] Seed:", sessionSeed);
+            if (typeof em.generateCharacter === "function") {
+                for (let i = 0; i < 5; i++) em.generateCharacter("villagers", "Citizen");
+                for (let j = 0; j < 3; j++) em.generateCharacter("merchants", "Trader");
+                for (let k = 0; k < 4; k++) em.generateCharacter("bandits", "Thug");
+                if (!Array.isArray(resolvedState.characters) || resolvedState.characters.length === 0) {
+                    console.error("[WorldBootstrap] Character generation failed: no characters created");
+                }
+            }
+
+            if (typeof em.runHistoricalEpochs === "function") {
+                em.runHistoricalEpochs(4);
+                if (!Array.isArray(resolvedState.worldHistory) || resolvedState.worldHistory.length === 0) {
+                    console.error("[WorldBootstrap] History generation failed: worldHistory empty");
+                }
+            }
+
+            if (typeof em.bootstrapAutonomousNPCsIfReady === "function") {
+                em.bootstrapAutonomousNPCsIfReady(resolvedState);
+            }
+            if (!window.AgentManager || !Array.isArray(AgentManager.agents) || AgentManager.agents.length === 0) {
+                console.warn("[WorldBootstrap] No autonomous agents created");
+            }
+
+            window.EMERGENT_WORLD_INITIALIZED = true;
+
+            const npcLen = Array.isArray(resolvedState.characters) ? resolvedState.characters.length : 0;
+            const agentLen = window.AgentManager && Array.isArray(AgentManager.agents)
+                ? AgentManager.agents.length
+                : 0;
+            console.log("[WorldBootstrap] Initialization complete");
+            console.log("[WorldBootstrap] NPCs:", npcLen);
+            console.log("[WorldBootstrap] Agents:", agentLen);
+            console.log("[WorldBootstrap] Seed:", resolvedState._emergentSessionSeed);
+        } catch (err) {
+            console.error("[WorldBootstrap] Bootstrap threw:", err);
+        } finally {
+            window.EMERGENT_WORLD_BOOTSTRAPPING = false;
+        }
     };
 
     EmergentManager.bootstrapNewGame = function() {
@@ -112,6 +141,7 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
     const _DataManager_setupNewGame = DataManager.setupNewGame;
     DataManager.setupNewGame = function() {
         window.EMERGENT_WORLD_INITIALIZED = false;
+        window.EMERGENT_WORLD_BOOTSTRAPPING = false;
         _DataManager_setupNewGame.call(this);
         window.EmergentWorldBootstrap.run();
     };
@@ -122,6 +152,9 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
     EmergentManager.generateCoreVariables = function() {
         if (window.EMERGENT_WORLD_INITIALIZED) {
             return;
+        }
+        if (!window.EMERGENT_WORLD_BOOTSTRAPPING) {
+            console.warn("[WorldBootstrap] Subsystem called outside bootstrap phase:", "generateCoreVariables");
         }
         const state = $gameSystem.emergentState();
         if (state._emergentSessionSeed === undefined) {

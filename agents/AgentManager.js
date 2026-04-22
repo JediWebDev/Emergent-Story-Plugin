@@ -27,7 +27,7 @@ Imported.EmergentWorld_AgentManager = true;
             if (!agent || !agent.baseCharacter) return;
             const id = agent.baseCharacter.id;
             if (typeof id !== "string") {
-                console.warn("[WorldBootstrap] AgentManager.register expected string npc.id, got:", typeof id, id);
+                console.warn("[WorldBootstrap] Non-string ID detected:", id);
                 return;
             }
             if (this.agents.some(a => a && a.baseCharacter && a.baseCharacter.id === id)) {
@@ -39,7 +39,7 @@ Imported.EmergentWorld_AgentManager = true;
 
         static getAgentByCharacterId(characterId) {
             if (characterId != null && typeof characterId !== "string") {
-                console.warn("[WorldBootstrap] getAgentByCharacterId expected string npc.id, got:", typeof characterId, characterId);
+                console.warn("[WorldBootstrap] Non-string ID detected:", characterId);
                 return null;
             }
             return this.agents.find(a => a && a.baseCharacter && a.baseCharacter.id === characterId) || null;

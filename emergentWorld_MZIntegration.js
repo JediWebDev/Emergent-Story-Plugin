@@ -96,7 +96,7 @@
     PluginManager.registerCommand(pluginName, "SpeakCharacterMemory", args => {
         let cid = args.charId;
         if (cid != null && typeof cid !== "string") {
-            console.warn("[WorldBootstrap] SpeakCharacterMemory charId should be string npc.id, got:", typeof cid);
+            console.warn("[WorldBootstrap] Non-string ID detected:", cid);
             cid = String(cid);
         }
         const char = EmergentManager.getCharacter(cid);

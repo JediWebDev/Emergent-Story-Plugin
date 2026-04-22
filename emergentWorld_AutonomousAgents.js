@@ -21,12 +21,12 @@ Imported.EmergentWorld_AutonomousAgents = true;
 
     /** Local-only: personality modulo seed; not used as identity or registry keys. */
     function _personalityModFromStringNpcId(s) {
-        if (typeof s !== "string" || !s.length) {
-            if (s != null) {
-                console.warn("[WorldBootstrap] makeAutonomous expected string npc.id for personality seed, got:", typeof s);
+            if (typeof s !== "string" || !s.length) {
+                if (s != null) {
+                    console.warn("[WorldBootstrap] Non-string ID detected:", s);
+                }
+                return 0;
             }
-            return 0;
-        }
         let h = 0;
         for (let i = 0; i < s.length; i++) {
             h = ((h << 5) - h) + s.charCodeAt(i);
@@ -192,7 +192,7 @@ Imported.EmergentWorld_AutonomousAgents = true;
             return null;
         }
         if (typeof id !== "string") {
-            console.warn("[WorldBootstrap] debugAgent expected string npc.id, got:", typeof id, id);
+            console.warn("[WorldBootstrap] Non-string ID detected:", id);
             return null;
         }
         const agent = AgentManager.agents.find(a => a && a.baseCharacter && a.baseCharacter.id === id) || null;
