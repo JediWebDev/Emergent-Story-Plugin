@@ -35,6 +35,9 @@ Imported.EmergentWorld_Factions = true;
         state.factions["valemont"] = this.rollFactionStats("House Valemont", "Aldenmere", "Ambitious");
         state.factions["vrakkoth"] = this.rollFactionStats("Dominion of Vrakkoth", "Vrakkoth", "Militaristic");
         state.factions["merchants"] = this.rollFactionStats("The Golden Ledger", "Aldenmere", "Greedy");
+        // Added: Characters and multiple systems reference "villagers" as a factionId.
+        // This ensures modFactionStat("villagers", ...) is never a silent no-op.
+        state.factions["villagers"] = this.rollFactionStats("The Free Peasantry", "Aldenmere", "Humble");
         state.factions["bandits"] = this.rollFactionStats("The Ashen Wolves", "Wildlands", "Rebellious");
         
         // Now that the factions are generated, calculate the starting global values
