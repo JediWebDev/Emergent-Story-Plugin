@@ -34,6 +34,10 @@ Imported.EmergentWorld_SocialNarratives = true;
     const OPINION_TARGET_COOLDOWN_TICKS = 4;
     const OPINION_MAX_TOTAL_DRIFT_PER_TICK = 2;
     const RECENT_GROUP_ACTION_WINDOW = 25;
+    const OPINION_RANDOM_VARIANCE = 1;
+    const DECISION_DIVERGENCE_THRESHOLD = 0.65;
+    const DECISION_DIVERGENCE_MIN_SAMPLES = 3;
+    const DECISION_DIVERGENCE_REDUCTION = 0.45;
 
     const _Game_System_initialize = Game_System.prototype.initialize;
     Game_System.prototype.initialize = function() {
@@ -85,6 +89,9 @@ Imported.EmergentWorld_SocialNarratives = true;
         if (!safeState.opinionTickCache || typeof safeState.opinionTickCache !== "object") {
             safeState.opinionTickCache = {};
         }
+        if (!safeState.factionDecisionDivergence || typeof safeState.factionDecisionDivergence !== "object") {
+            safeState.factionDecisionDivergence = { tick: -1, factions: {} };
+        }
         return safeState;
     };
 
@@ -115,6 +122,126 @@ Imported.EmergentWorld_SocialNarratives = true;
     EmergentManager.getCharacterLabel = function(character, state) {
         if (!character) return "Unknown";
         return this.ensureDisplayName(character, state);
+    };
+
+    EmergentManager.ensurePersonalityProfile = function(character) {
+        if (!character) return null;
+        if (character.socialPersonality && typeof character.socialPersonality === "object") {
+            return character.socialPersonality;
+        }
+        const role = String(character.role || "");
+        const faction = String(character.faction || "");
+        const personality = {
+            cautious: Math.randomInt(100) < (role === "Citizen" ? 48 : 30),
+            greedy: Math.randomInt(100) < (role === "Trader" ? 68 : 25),
+            loyal: Math.randomInt(100) < (faction === "villagers" ? 50 : 38),
+            distrustful: Math.randomInt(100) < (faction === "bandits" ? 52 : 30)
+        };
+        if (!personality.cautious && !personality.greedy && !personality.loyal && !personality.distrustful) {
+            const fallback = ["cautious", "greedy", "loyal", "distrustful"][Math.randomInt(4)];
+            personality[fallback] = true;
+        }
+        character.socialPersonality = personality;
+        return personality;
+    };
+
+    EmergentManager.getPersonalityOpinionModifier = function(character, targetKey, baseDelta) {
+        const personality = this.ensurePersonalityProfile(character) || {};
+        const ownFaction = String(character && character.faction || "");
+        let modifier = 1;
+
+        if (personality.greedy && targetKey === "merchants" && baseDelta > 0) modifier += 0.45;
+        if (personality.distrustful) modifier += baseDelta > 0 ? -0.55 : 0.25;
+        if (personality.cautious && baseDelta !== 0) modifier += baseDelta > 0 ? -0.15 : -0.05;
+        if (personality.loyal) {
+            if (targetKey === ownFaction && baseDelta > 0) modifier += 0.4;
+            if (targetKey !== ownFaction && baseDelta > 0) modifier -= 0.3;
+            if (targetKey !== ownFaction && baseDelta < 0) modifier += 0.2;
+        }
+        return Math.max(-1.5, Math.min(2.0, modifier));
+    };
+
+    EmergentManager.interpretOpinionDelta = function(character, targetKey, baseDelta, sourceKey) {
+        if (!baseDelta) {
+            return {
+                finalDelta: 0,
+                personalityModifier: 1,
+                randomness: 0
+            };
+        }
+        const personalityModifier = this.getPersonalityOpinionModifier(character, targetKey, baseDelta);
+        const randomness = Math.randomInt((OPINION_RANDOM_VARIANCE * 2) + 1) - OPINION_RANDOM_VARIANCE;
+        let finalDelta = Math.round((baseDelta * personalityModifier) + randomness);
+        if (finalDelta === 0 && Math.abs(baseDelta) >= 1) {
+            finalDelta = Math.randomInt(100) < 60 ? Math.sign(baseDelta) : 0;
+        }
+        this.socialNarrativeDebug("Opinion interpreted", {
+            characterId: character && character.id,
+            target: targetKey,
+            source: sourceKey,
+            baseDelta: baseDelta,
+            personalityModifier: personalityModifier,
+            randomness: randomness,
+            finalDelta: finalDelta
+        });
+        return {
+            finalDelta: finalDelta,
+            personalityModifier: personalityModifier,
+            randomness: randomness
+        };
+    };
+
+    EmergentManager.getRecentMemoryActionBias = function(character, action) {
+        const memory = Array.isArray(character && character.memory) ? character.memory.slice(-5) : [];
+        if (memory.length === 0) return 0;
+        let bias = 0;
+        for (const entry of memory) {
+            if (!entry) continue;
+            const type = String(entry.type || "");
+            const target = String(entry.target || "");
+            const value = Number(entry.value || 0);
+            if (action === "trade" && (type.includes("trade") || target === "merchants")) bias += 4 + Math.floor(value / 3);
+            if (action === "act_aggressively" && (type.includes("aggressive") || target === "bandits")) bias += 3 + Math.floor(value / 4);
+            if (action === "seek_safety" && (type.includes("seek_safety") || type.includes("avoid_conflict"))) bias += 3 + Math.floor(value / 4);
+            if (action === "follow_leader_action" && type.includes("follow_leader")) bias += 3 + Math.floor(value / 5);
+            if (action === "support_group_action" && type.includes("group_support")) bias += 4 + Math.floor(value / 4);
+        }
+        return bias;
+    };
+
+    EmergentManager.getPersonalityDecisionWeightMultiplier = function(character, action) {
+        const personality = this.ensurePersonalityProfile(character) || {};
+        let multiplier = 1;
+        if (personality.greedy && action === "trade") multiplier += 0.35;
+        if (personality.cautious && (action === "seek_safety" || action === "avoid_conflict")) multiplier += 0.3;
+        if (personality.cautious && action === "act_aggressively") multiplier -= 0.3;
+        if (personality.distrustful && action === "act_aggressively") multiplier += 0.28;
+        if (personality.loyal && (action === "follow_leader_action" || action === "support_group_action")) multiplier += 0.25;
+        return Math.max(0.2, Math.min(2.2, multiplier));
+    };
+
+    EmergentManager.getOpinionActionBias = function(character, action) {
+        const opinions = character && character.opinions ? character.opinions : {};
+        const merchantsOpinion = Number(opinions.merchants || 0);
+        const banditsOpinion = Number(opinions.bandits || 0);
+        const ownFactionOpinion = Number(opinions[String(character && character.faction || "")] || 0);
+        if (action === "trade") return Math.floor(merchantsOpinion / 8);
+        if (action === "act_aggressively") return Math.floor(banditsOpinion / 10);
+        if (action === "support_group_action" || action === "follow_leader_action") return Math.floor(ownFactionOpinion / 9);
+        return 0;
+    };
+
+    EmergentManager.getFactionDivergenceTracker = function(state, tick, factionId) {
+        const safeState = this.ensureSocialNarrativeState(state);
+        if (!safeState) return null;
+        if (!safeState.factionDecisionDivergence || safeState.factionDecisionDivergence.tick !== tick) {
+            safeState.factionDecisionDivergence = { tick: tick, factions: {} };
+        }
+        const factionKey = String(factionId || "none");
+        if (!safeState.factionDecisionDivergence.factions[factionKey]) {
+            safeState.factionDecisionDivergence.factions[factionKey] = { total: 0, counts: {} };
+        }
+        return safeState.factionDecisionDivergence.factions[factionKey];
     };
 
     EmergentManager._groupGoalDescriptors = {
@@ -709,6 +836,7 @@ Imported.EmergentWorld_SocialNarratives = true;
     const _buildDecisionContext = EmergentManager.buildDecisionContext;
     EmergentManager.buildDecisionContext = function(character, state) {
         const context = _buildDecisionContext.call(this, character, state);
+        context.personality = this.ensurePersonalityProfile(character);
         const group = this.getCharacterGroup(character);
         if (group) {
             context.groupId = group.id;
@@ -743,6 +871,82 @@ Imported.EmergentWorld_SocialNarratives = true;
         if (!isLeader && context.groupLeaderId !== null && action === "follow_leader_action") score += 6 + Math.floor(cohesion / 18);
         if (isLeader && action === "support_group_action") score += 6;
         return score;
+    };
+
+    const _decideAction = EmergentManager.decideAction;
+    EmergentManager.decideAction = function(character, context) {
+        if (!character || !character.isAlive) return _decideAction.call(this, character, context);
+        this.ensurePersonalityProfile(character);
+
+        const actions = this.getAvailableActions(character);
+        if (!Array.isArray(actions) || actions.length === 0) {
+            return _decideAction.call(this, character, context);
+        }
+
+        const safeState = this.ensureSocialNarrativeState();
+        const tick = Number(context && context.tick || (safeState && safeState.ticks) || 0);
+        const tracker = this.getFactionDivergenceTracker(safeState, tick, character.faction);
+
+        const weighted = actions.map(action => {
+            const baseScore = Number(this.scoreAction(character, action, context) || 0);
+            const memoryBias = this.getRecentMemoryActionBias(character, action);
+            const opinionBias = this.getOpinionActionBias(character, action);
+            const personalityMult = this.getPersonalityDecisionWeightMultiplier(character, action);
+            let weight = Math.max(0.2, baseScore + memoryBias + opinionBias);
+            weight *= personalityMult;
+
+            if (tracker && tracker.total >= DECISION_DIVERGENCE_MIN_SAMPLES) {
+                const currentCount = Number(tracker.counts[action] || 0);
+                const projectedShare = (currentCount + 1) / (tracker.total + 1);
+                if (projectedShare > DECISION_DIVERGENCE_THRESHOLD) {
+                    weight *= DECISION_DIVERGENCE_REDUCTION;
+                }
+            }
+            return {
+                action: action,
+                baseScore: baseScore,
+                memoryBias: memoryBias,
+                opinionBias: opinionBias,
+                personalityMult: personalityMult,
+                weight: Math.max(0.05, weight)
+            };
+        });
+
+        const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
+        if (totalWeight <= 0) return _decideAction.call(this, character, context);
+
+        let roll = Math.random() * totalWeight;
+        let chosen = weighted[weighted.length - 1].action;
+        for (const item of weighted) {
+            roll -= item.weight;
+            if (roll <= 0) {
+                chosen = item.action;
+                break;
+            }
+        }
+
+        if (tracker) {
+            tracker.total += 1;
+            tracker.counts[chosen] = Number(tracker.counts[chosen] || 0) + 1;
+        }
+
+        this.socialNarrativeDebug("Decision weighted selection", {
+            characterId: character.id,
+            faction: character.faction,
+            tick: tick,
+            chosen: chosen,
+            weights: weighted.map(item => ({
+                action: item.action,
+                base: item.baseScore,
+                memoryBias: item.memoryBias,
+                opinionBias: item.opinionBias,
+                personalityMult: item.personalityMult,
+                finalWeight: Number(item.weight.toFixed(3))
+            })),
+            factionDistribution: tracker ? { total: tracker.total, counts: tracker.counts } : null
+        });
+
+        return chosen;
     };
 
     const _applySocialInfluence = EmergentManager.applySocialInfluence;
@@ -782,7 +986,10 @@ Imported.EmergentWorld_SocialNarratives = true;
     const _generateCharacter = EmergentManager.generateCharacter;
     EmergentManager.generateCharacter = function(factionId, role) {
         const created = _generateCharacter.call(this, factionId, role);
-        if (created) this.ensureDisplayName(created);
+        if (created) {
+            this.ensureDisplayName(created);
+            this.ensurePersonalityProfile(created);
+        }
         return created;
     };
 
@@ -830,7 +1037,10 @@ Imported.EmergentWorld_SocialNarratives = true;
         const targetKey = String(target);
         const sourceKey = String(source || "unknown");
         const currentTick = Number(state.ticks || 0);
-        const requestedDelta = Number(value) || 0;
+        this.ensurePersonalityProfile(character);
+        const baseDelta = Number(value) || 0;
+        const interpretation = this.interpretOpinionDelta(character, targetKey, baseDelta, sourceKey);
+        const requestedDelta = Number(interpretation.finalDelta) || 0;
         if (requestedDelta === 0) return;
 
         const budgetKey = String(charId);
