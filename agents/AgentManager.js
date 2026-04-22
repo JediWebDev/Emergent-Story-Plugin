@@ -25,8 +25,7 @@ Imported.EmergentWorld_AgentManager = true;
 
         static register(agent) {
             if (!agent || !agent.baseCharacter) return;
-            const existing = this.agents.find(a => a && a.baseCharacter && a.baseCharacter.id === agent.baseCharacter.id);
-            if (existing) return;
+            if (this.agents.some(a => a && a.baseCharacter && a.baseCharacter.id === agent.baseCharacter.id)) return;
             this.agents.push(agent);
         }
 
@@ -35,9 +34,13 @@ Imported.EmergentWorld_AgentManager = true;
         }
 
         static update(state) {
+            if (!this._tick) this._tick = 0;
+            this._tick++;
             for (const agent of this.agents) {
                 if (!agent || typeof agent.update !== "function") continue;
-                agent.update(state);
+                if (this._tick % 10 === 0) {
+                    agent.update(state);
+                }
             }
         }
     }

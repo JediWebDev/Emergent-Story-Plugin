@@ -50,7 +50,7 @@ Imported.EmergentWorld_AutonomousAgent = true;
             if (Number(this.personality.agreeableness || 0) <= 2) {
                 const refuseCycle = 5 + (charId % 3);
                 if (refuseCycle > 0 && tick % refuseCycle === 0) {
-                    this.currentIntent = "refuse_interaction";
+                    this.currentIntent = { type: "REFUSE_INTERACTION", target: "player" };
                     return;
                 }
             }
@@ -58,44 +58,56 @@ Imported.EmergentWorld_AutonomousAgent = true;
             if (Number(this.personality.extraversion || 0) >= 7) {
                 const talkCycle = 4 + (charId % 2);
                 if (talkCycle > 0 && tick % talkCycle === 0) {
-                    this.currentIntent = "initiate_dialogue";
+                    this.currentIntent = { type: "INITIATE_DIALOGUE", target: "player" };
                     return;
                 }
             }
 
-            this.currentIntent = "observe";
+            this.currentIntent = null;
         }
 
         executeIntent(state) {
             if (!this.baseCharacter || !this.baseCharacter.isAlive) return;
-            const actor = this.baseCharacter;
-            const intent = this.currentIntent || "observe";
+            if (!this.currentIntent || !this.currentIntent.type) return;
 
-            if (intent === "initiate_dialogue") {
-                if (typeof this.addMemory === "function") {
-                    this.addMemory("Initiated dialogue with the player.", 2);
-                }
-                if (window.EmergentManager && typeof EmergentManager.logEvent === "function") {
-                    EmergentManager.logEvent("agent_intent_dialogue", {
-                        characterId: actor.id,
-                        characterName: actor.name,
-                        mode: actor.mode || "AUTONOMOUS"
-                    });
-                }
-            } else if (intent === "refuse_interaction") {
-                if (typeof this.addMemory === "function") {
-                    this.addMemory("Refused an interaction.", 2);
-                }
-                if (window.EmergentManager && typeof EmergentManager.logEvent === "function") {
-                    EmergentManager.logEvent("agent_intent_refusal", {
-                        characterId: actor.id,
-                        characterName: actor.name,
-                        mode: actor.mode || "AUTONOMOUS"
-                    });
-                }
+            switch (this.currentIntent.type) {
+                case "INITIATE_DIALOGUE":
+                    this.triggerDialogue(state);
+                    break;
+                case "REFUSE_INTERACTION":
+                    this.refuseInteraction(state);
+                    break;
+                default:
+                    break;
             }
 
-            console.log("[Agent]", actor.name, "Intent:", intent);
+            console.log("[Agent]", this.baseCharacter.name, "| Intent:", this.currentIntent);
+        }
+
+        triggerDialogue() {
+            const actor = this.baseCharacter;
+            if (!actor || !actor.isAlive) return;
+            this.addMemory("Initiated dialogue with the player.", 2);
+            if (window.EmergentManager && typeof EmergentManager.logEvent === "function") {
+                EmergentManager.logEvent("agent_intent_dialogue", {
+                    characterId: actor.id,
+                    characterName: actor.name,
+                    mode: actor.mode || "AUTONOMOUS"
+                });
+            }
+        }
+
+        refuseInteraction() {
+            const actor = this.baseCharacter;
+            if (!actor || !actor.isAlive) return;
+            this.addMemory("Refused an interaction.", 2);
+            if (window.EmergentManager && typeof EmergentManager.logEvent === "function") {
+                EmergentManager.logEvent("agent_intent_refusal", {
+                    characterId: actor.id,
+                    characterName: actor.name,
+                    mode: actor.mode || "AUTONOMOUS"
+                });
+            }
         }
 
         addMemory(eventText, importance = 1) {

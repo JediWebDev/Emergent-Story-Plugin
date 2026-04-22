@@ -24,7 +24,10 @@ Imported.EmergentWorld_AutonomousAgents = true;
         const state = $gameSystem.emergentState();
         if (!state) return null;
         if (state.agentSystemEnabled === undefined) state.agentSystemEnabled = true;
-        if (state._autonomousBootstrapDone === undefined) state._autonomousBootstrapDone = false;
+        if (state._autonomousInitialized === undefined) {
+            state._autonomousInitialized = !!state._autonomousBootstrapDone;
+        }
+        if (state._autonomousBootstrapDone === undefined) state._autonomousBootstrapDone = state._autonomousInitialized;
         return state;
     };
 
@@ -75,23 +78,40 @@ Imported.EmergentWorld_AutonomousAgents = true;
     const _decideAction = EmergentManager.decideAction;
     EmergentManager.decideAction = function(character, context) {
         if (character && character.mode === "AUTONOMOUS") {
-            return "do_nothing";
+            return null;
         }
         return _decideAction.call(this, character, context);
     };
 
     const _executeAction = EmergentManager.executeAction;
     EmergentManager.executeReactiveAction = function(character, action, context) {
+        if (action === null || action === undefined) return;
         return _executeAction.call(this, character, action, context);
     };
     EmergentManager.executeAction = function(character, action, context) {
+        if (action === null || action === undefined) return;
         if (character && character.mode === "AUTONOMOUS") return;
         return _executeAction.call(this, character, action, context);
     };
 
+    EmergentManager.rebuildAutonomousAgents = function(state) {
+        const safeState = state || _ensureState();
+        if (!safeState || !Array.isArray(safeState.characters)) return;
+        if (!window.AgentManager) return;
+
+        for (const npc of safeState.characters) {
+            if (!npc || !npc.isAlive) continue;
+            if (npc.mode !== "AUTONOMOUS") continue;
+            const existing = AgentManager.getAgentByCharacterId(npc.id);
+            if (!npc.agent || !existing) {
+                this.makeAutonomous(npc);
+            }
+        }
+    };
+
     EmergentManager.bootstrapAutonomousTestAgent = function(state) {
         const safeState = state || _ensureState();
-        if (!safeState || safeState._autonomousBootstrapDone) return;
+        if (!safeState || safeState._autonomousInitialized) return;
         const chars = Array.isArray(safeState.characters) ? safeState.characters : [];
         if (chars.length === 0) return;
 
@@ -100,6 +120,7 @@ Imported.EmergentWorld_AutonomousAgents = true;
             || chars.find(c => c && c.isAlive);
         if (!candidate) return;
         this.makeAutonomous(candidate);
+        safeState._autonomousInitialized = true;
         safeState._autonomousBootstrapDone = true;
         console.log("[Agent] Bootstrapped autonomous NPC:", candidate.name, `(id=${candidate.id})`);
     };
@@ -117,8 +138,20 @@ Imported.EmergentWorld_AutonomousAgents = true;
         }
 
         this.bootstrapAutonomousTestAgent(safeState);
+        this.rebuildAutonomousAgents(safeState);
         if (!this.isAgentSystemEnabled()) return;
         if (!window.AgentManager || typeof AgentManager.update !== "function") return;
         AgentManager.update(safeState);
     });
+
+    window.debugAgent = function(id) {
+        if (!window.AgentManager || !Array.isArray(AgentManager.agents)) {
+            console.log(null);
+            return null;
+        }
+        const targetId = Number(id);
+        const agent = AgentManager.agents.find(a => a && a.baseCharacter && Number(a.baseCharacter.id) === targetId) || null;
+        console.log(agent);
+        return agent;
+    };
 })();
