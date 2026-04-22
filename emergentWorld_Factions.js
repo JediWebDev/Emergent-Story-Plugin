@@ -88,10 +88,7 @@ Imported.EmergentWorld_Factions = true;
     //=============================================================================
     // 5. The Dynamic Tick
     //=============================================================================
-    const _EmergentManager_onTick = EmergentManager.onTick;
-    EmergentManager.onTick = function() {
-        if (_EmergentManager_onTick) _EmergentManager_onTick.call(this);
-
+    EmergentManager.registerTickHandler("factions", 10, function() {
         const merchants = this.getFaction("merchants");
         const bandits = this.getFaction("bandits");
 
@@ -112,5 +109,5 @@ Imported.EmergentWorld_Factions = true;
 
         // Print the current state to the console
         console.log(`[RNG State] Merchant Wealth: ${merchants.wealth} | Bandit Military: ${bandits.military}`);
-    };
+    });
 })();

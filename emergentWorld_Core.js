@@ -18,6 +18,7 @@ var Imported = Imported || {};
 Imported.EmergentWorld_Core = true;
 
 var EmergentManager = EmergentManager || {};
+EmergentManager._tickHandlers = EmergentManager._tickHandlers || [];
 
 (() => {
     const pluginName = "EmergentWorld_Core";
@@ -112,6 +113,26 @@ var EmergentManager = EmergentManager || {};
         this.setVar(key, current + amount);
     };
 
+    EmergentManager.registerTickHandler = function(name, priority, fn) {
+        if (typeof fn !== "function") return;
+
+        const normalizedPriority = Number(priority) || 0;
+        const existingIndex = this._tickHandlers.findIndex(h => h.name === name);
+        const handler = { name, priority: normalizedPriority, fn };
+
+        if (existingIndex >= 0) {
+            this._tickHandlers[existingIndex] = handler;
+        } else {
+            this._tickHandlers.push(handler);
+        }
+
+        // Deterministic order: priority first, then name.
+        this._tickHandlers.sort((a, b) => {
+            if (a.priority !== b.priority) return a.priority - b.priority;
+            return String(a.name).localeCompare(String(b.name));
+        });
+    };
+
     //=============================================================================
     // 5. The Update Loop
     //=============================================================================
@@ -126,16 +147,19 @@ var EmergentManager = EmergentManager || {};
     };
 
     EmergentManager.tickSimulation = function () {
-        $gameSystem.emergentState().ticks++;
-        console.log("Emergent World Tick: " + $gameSystem.emergentState().ticks);
+        const state = $gameSystem.emergentState();
+        state.ticks++;
+        console.log("Emergent World Tick: " + state.ticks);
         
         // Trigger the Master Simulation Tick Common Event
         if ($gameTemp && !$gameTemp.isCommonEventReserved()) {
             // $gameTemp.reserveCommonEvent(10); 
         }
 
-        // Broadcast to other layers (Factions, Events, etc.)
-        if (this.onTick) this.onTick();
+        // Deterministic scheduler for all simulation layers.
+        for (const handler of this._tickHandlers) {
+            handler.fn.call(this);
+        }
     };
 
     //=============================================================================

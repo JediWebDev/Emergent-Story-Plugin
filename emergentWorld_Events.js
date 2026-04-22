@@ -82,10 +82,7 @@ Imported.EmergentWorld_Events = true;
     //=============================================================================
     // Event Evaluation Loop
     //=============================================================================
-    const _EmergentManager_onTick = EmergentManager.onTick;
-    EmergentManager.onTick = function() {
-        if (_EmergentManager_onTick) _EmergentManager_onTick.call(this);
-
+    EmergentManager.registerTickHandler("events", 20, function() {
         // Gather valid events
         const possibleEvents = [];
         for (const rule of this._eventRules) {
@@ -102,5 +99,5 @@ Imported.EmergentWorld_Events = true;
             // Optional: Show an MZ notification or play a sound effect here
             // $gameMessage.add("Rumors speak of: " + chosenEvent.name);
         }
-    };
+    });
 })();

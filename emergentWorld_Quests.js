@@ -115,10 +115,7 @@ Imported.EmergentWorld_Quests = true;
     //=============================================================================
     // Detector Hook 
     //=============================================================================
-    const _EmergentManager_onTick = EmergentManager.onTick;
-    EmergentManager.onTick = function() {
-        if (_EmergentManager_onTick) _EmergentManager_onTick.call(this);
-
+    EmergentManager.registerTickHandler("quests", 30, function() {
         const banditPower = this.getVar("banditPower");
         if (banditPower > 40) {
             this.generateQuest("bandit_bounty", banditPower);
@@ -128,5 +125,5 @@ Imported.EmergentWorld_Quests = true;
         if (foodSupply < 30) {
             this.generateQuest("gather_rations", foodSupply);
         }
-    };
+    });
 })();
