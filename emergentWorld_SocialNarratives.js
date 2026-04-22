@@ -25,8 +25,12 @@ Imported.EmergentWorld_SocialNarratives = true;
 (() => {
     const pluginName = "emergentWorld_SocialNarratives";
     const MAX_FORMATION_CHECKS_PER_TICK = 8;
+    const MAX_GROUP_FORMATIONS_PER_TICK = 2;
     const NARRATIVE_SCAN_INTERVAL = 5;
     const CONFLICT_REPEAT_THRESHOLD = 3;
+    const RELATIONSHIP_UPDATES_PER_ACTOR_PER_TICK = 2;
+    const RELATIONSHIP_PAIR_COOLDOWN_TICKS = 3;
+    const RECENT_GROUP_ACTION_WINDOW = 25;
 
     const _Game_System_initialize = Game_System.prototype.initialize;
     Game_System.prototype.initialize = function() {
@@ -57,7 +61,48 @@ Imported.EmergentWorld_SocialNarratives = true;
         if (safeState.socialGroupIdCounter === undefined) safeState.socialGroupIdCounter = 0;
         if (safeState.narrativeIdCounter === undefined) safeState.narrativeIdCounter = 0;
         if (safeState.eventIdCounter === undefined) safeState.eventIdCounter = 0;
+        if (!safeState.relationshipUpdateBudgets || typeof safeState.relationshipUpdateBudgets !== "object") {
+            safeState.relationshipUpdateBudgets = {};
+        }
+        if (!safeState.relationshipPairCooldowns || typeof safeState.relationshipPairCooldowns !== "object") {
+            safeState.relationshipPairCooldowns = {};
+        }
+        if (!safeState.recentInteractions || typeof safeState.recentInteractions !== "object") {
+            safeState.recentInteractions = {};
+        }
+        if (!safeState.displayNameRegistry || typeof safeState.displayNameRegistry !== "object") {
+            safeState.displayNameRegistry = {};
+        }
         return safeState;
+    };
+
+    EmergentManager.socialNarrativeDebug = function(message, payload) {
+        if (!this.debugLogs) return;
+        if (payload !== undefined) {
+            console.log(`[SocialNarrative] ${message}`, payload);
+        } else {
+            console.log(`[SocialNarrative] ${message}`);
+        }
+    };
+
+    EmergentManager.ensureDisplayName = function(character, state) {
+        if (!character) return "Unknown";
+        const safeState = this.ensureSocialNarrativeState(state);
+        if (!safeState) return String(character.name || "Unknown");
+        if (character.displayName) return character.displayName;
+        const baseName = String(character.name || "Unknown");
+        const faction = String(character.faction || "none");
+        const role = String(character.role || "NPC");
+        const baseKey = `${baseName}|${faction}|${role}`;
+        const nextCount = Number(safeState.displayNameRegistry[baseKey] || 0) + 1;
+        safeState.displayNameRegistry[baseKey] = nextCount;
+        character.displayName = `${baseName} (${faction}/${role}#${nextCount})`;
+        return character.displayName;
+    };
+
+    EmergentManager.getCharacterLabel = function(character, state) {
+        if (!character) return "Unknown";
+        return this.ensureDisplayName(character, state);
     };
 
     EmergentManager._groupGoalDescriptors = {
@@ -95,15 +140,23 @@ Imported.EmergentWorld_SocialNarratives = true;
         state.socialGroups[id] = group;
         for (const memberId of group.members) {
             const member = this.getCharacter(memberId);
-            if (member) member.groupId = id;
+            if (member) {
+                member.groupId = id;
+                this.ensureDisplayName(member, state);
+            }
         }
 
         this.logEvent("social_group_created", {
             groupId: id,
             type: group.type,
             leaderId: group.leaderId,
-            memberCount: group.members.length
+            memberCount: group.members.length,
+            members: group.members
+                .map(memberId => this.getCharacter(memberId))
+                .filter(Boolean)
+                .map(member => this.getCharacterLabel(member, state))
         });
+        this.socialNarrativeDebug("Group created", { groupId: id, type: group.type, memberCount: group.members.length });
         return group;
     };
 
@@ -113,10 +166,16 @@ Imported.EmergentWorld_SocialNarratives = true;
         if (!group) return false;
         if (!group.members.includes(character.id)) group.members.push(character.id);
         character.groupId = group.id;
+        this.ensureDisplayName(character);
         if (!this.getCharacter(group.leaderId) || !group.members.includes(group.leaderId)) {
             group.leaderId = character.id;
         }
         this.updateGroupCohesion(group);
+        this.logEvent("character_joined_group", {
+            groupId: group.id,
+            characterId: character.id,
+            characterName: this.getCharacterLabel(character)
+        });
         return true;
     };
 
@@ -245,25 +304,51 @@ Imported.EmergentWorld_SocialNarratives = true;
         return Math.max(0, 100 - (totalDiff / keys.length));
     };
 
+    EmergentManager.getMemorySimilarityScore = function(a, b) {
+        const aMemory = Array.isArray(a && a.memory) ? a.memory.slice(-4) : [];
+        const bMemory = Array.isArray(b && b.memory) ? b.memory.slice(-4) : [];
+        if (aMemory.length === 0 || bMemory.length === 0) return 0;
+        const aTypes = new Set(aMemory.map(m => String(m.type || "unknown")));
+        const bTypes = new Set(bMemory.map(m => String(m.type || "unknown")));
+        let overlap = 0;
+        for (const type of aTypes) {
+            if (bTypes.has(type)) overlap++;
+        }
+        return Math.floor((overlap / Math.max(1, Math.min(aTypes.size, bTypes.size))) * 100);
+    };
+
     EmergentManager.tryFormGroupFromCharacter = function(character, state) {
         if (!character || !character.isAlive || character.groupId) return false;
         const nearby = this.getNearbyNPCs(character, state);
         const candidates = [];
+        this.socialNarrativeDebug("Formation attempt", { characterId: character.id, nearbyCount: nearby.length });
         for (const other of nearby) {
             if (!other || !other.isAlive || other.groupId) continue;
             const relationship = this.getRelationship(character, other);
             const opinionSimilarity = this.getOpinionSimilarityScore(character, other);
-            if (relationship > 40 && opinionSimilarity > 58) {
+            const memorySimilarity = this.getMemorySimilarityScore(character, other);
+            const sharedFaction = character.faction === other.faction;
+            const passesAffinity = relationship > 12 || sharedFaction;
+            const passesSocialSimilarity = opinionSimilarity > 45 || memorySimilarity > 35;
+            if (passesAffinity && passesSocialSimilarity) {
                 candidates.push(other);
             }
         }
         if (candidates.length < 1) return false;
         const members = [character.id, candidates[0].id];
-        if (candidates[1] && this.getRelationship(candidates[0], candidates[1]) > 30) {
+        if (candidates[1] && (this.getRelationship(candidates[0], candidates[1]) > 10 || candidates[0].faction === candidates[1].faction)) {
             members.push(candidates[1].id);
         }
         const groupType = this.pickGroupTypeFromMembers(members);
-        return !!this.createSocialGroup(groupType, members);
+        const created = !!this.createSocialGroup(groupType, members);
+        if (created) {
+            this.socialNarrativeDebug("Formation success", {
+                starter: this.getCharacterLabel(character, state),
+                groupType: groupType,
+                memberCount: members.length
+            });
+        }
+        return created;
     };
 
     EmergentManager.evaluateGroupMembership = function(character, group, state) {
@@ -316,7 +401,11 @@ Imported.EmergentWorld_SocialNarratives = true;
         if (group.goal === "expand trade wealth") {
             group.resources.wealth += 2;
             this.modFactionStat("merchants", "wealth", 1);
-            this.logEvent("social_group_trade", { groupId: group.id, wealth: group.resources.wealth });
+            this.logEvent("social_group_trade", {
+                groupId: group.id,
+                wealth: group.resources.wealth,
+                cohesion: group.cohesion
+            });
         } else if (group.goal === "defend territory" || group.goal === "recruit defenders") {
             group.resources.military += 2;
             this.logEvent("social_group_defense", { groupId: group.id, military: group.resources.military });
@@ -373,6 +462,10 @@ Imported.EmergentWorld_SocialNarratives = true;
             entry.id = Number(state.eventIdCounter || 0);
             state.eventIdCounter = entry.id + 1;
         }
+        const noisyRelationshipType = entry && entry.type === "npc_relationship_changed";
+        if (!noisyRelationshipType && this.debugLogs) {
+            this.socialNarrativeDebug(`event:${String(type)}`, entry && entry.data ? entry.data : {});
+        }
     };
 
     EmergentManager.createNarrative = function(type, participants, eventIds, summary) {
@@ -391,6 +484,7 @@ Imported.EmergentWorld_SocialNarratives = true;
         };
         state.narratives.push(narrative);
         this.logEvent("narrative_created", { narrativeId: narrative.id, type: narrative.type, participants: narrative.participants });
+        this.socialNarrativeDebug("Narrative created", { id: narrative.id, type: narrative.type, participants: narrative.participants });
         return narrative;
     };
 
@@ -456,6 +550,11 @@ Imported.EmergentWorld_SocialNarratives = true;
         if (!safeState || !Array.isArray(safeState.eventLog)) return;
         const events = safeState.eventLog;
         const recentEvents = events.slice(-80);
+        this.socialNarrativeDebug("Narrative scan running", {
+            tick: safeState.ticks,
+            recentEvents: recentEvents.length,
+            activeNarratives: safeState.narratives.filter(n => n && n.status === "active").length
+        });
 
         // Rule 1: repeated group aggression -> conflict narrative.
         const conflictPairs = {};
@@ -472,7 +571,11 @@ Imported.EmergentWorld_SocialNarratives = true;
 
         for (const key in conflictPairs) {
             const info = conflictPairs[key];
-            if (info.count < CONFLICT_REPEAT_THRESHOLD) continue;
+            this.socialNarrativeDebug("Narrative rule:conflict evaluated", { pair: key, count: info.count });
+            if (info.count < CONFLICT_REPEAT_THRESHOLD) {
+                this.socialNarrativeDebug("Narrative rule:conflict rejected", { pair: key, reason: "below threshold" });
+                continue;
+            }
             const participants = key.split("|");
             const existing = this.getActiveNarrativeByTypeAndParticipants("conflict", participants);
             const summary = this.generateNarrativeSummary("conflict");
@@ -489,6 +592,7 @@ Imported.EmergentWorld_SocialNarratives = true;
             const createdTick = Number(group.lastActionTick || 0);
             const age = Number(safeState.ticks || 0) - createdTick;
             if (group.members.length >= 6 && age <= 25) {
+                this.socialNarrativeDebug("Narrative candidate:rise", { groupId: group.id, members: group.members.length, age: age });
                 const participants = [group.id];
                 const existing = this.getActiveNarrativeByTypeAndParticipants("rise", participants);
                 const relatedEventIds = recentEvents
@@ -501,6 +605,13 @@ Imported.EmergentWorld_SocialNarratives = true;
                     this.createNarrative("rise", participants, relatedEventIds, this.generateNarrativeSummary("rise"));
                 }
             }
+            if (!(group.members.length >= 6 && age <= 25)) {
+                this.socialNarrativeDebug("Narrative rule:rise rejected", {
+                    groupId: group.id,
+                    members: group.members.length,
+                    age: age
+                });
+            }
         }
 
         // Rule 3: faction switch after positive ties -> betrayal narrative.
@@ -511,8 +622,15 @@ Imported.EmergentWorld_SocialNarratives = true;
             const char = this.getCharacter(Number(data.characterId));
             if (!char) continue;
             const betrayalSignal = (Number(char.opinions && char.opinions[data.fromFaction]) || 0) > 10;
-            if (!betrayalSignal) continue;
+            if (!betrayalSignal) {
+                this.socialNarrativeDebug("Narrative rule:betrayal rejected", {
+                    characterId: data.characterId,
+                    reason: "insufficient positive prior loyalty"
+                });
+                continue;
+            }
             const participants = [String(data.characterId), `faction_${String(data.fromFaction)}`];
+            this.socialNarrativeDebug("Narrative candidate:betrayal", { participants: participants });
             const existing = this.getActiveNarrativeByTypeAndParticipants("betrayal", participants);
             const summary = this.generateNarrativeSummary("betrayal");
             if (existing) {
@@ -649,19 +767,78 @@ Imported.EmergentWorld_SocialNarratives = true;
         this.removeCharacterFromGroup(char, groupId);
     };
 
+    const _generateCharacter = EmergentManager.generateCharacter;
+    EmergentManager.generateCharacter = function(factionId, role) {
+        const created = _generateCharacter.call(this, factionId, role);
+        if (created) this.ensureDisplayName(created);
+        return created;
+    };
+
+    const _updateRelationship = EmergentManager.updateRelationship;
+    EmergentManager.updateRelationship = function(a, b, delta) {
+        if (!a || !b || a.id === b.id) return;
+        const state = this.ensureSocialNarrativeState();
+        if (!state) return _updateRelationship.call(this, a, b, delta);
+
+        const currentTick = Number(state.ticks || 0);
+        const actorBudget = state.relationshipUpdateBudgets[a.id];
+        if (!actorBudget || actorBudget.tick !== currentTick) {
+            state.relationshipUpdateBudgets[a.id] = { tick: currentTick, used: 0 };
+        }
+
+        const budget = state.relationshipUpdateBudgets[a.id];
+        const pairKey = [a.id, b.id].sort((x, y) => x - y).join("|");
+        const cooldownTick = Number(state.relationshipPairCooldowns[pairKey] || -9999);
+        const isPairCoolingDown = (currentTick - cooldownTick) < RELATIONSHIP_PAIR_COOLDOWN_TICKS;
+
+        const sameFaction = a.faction === b.faction;
+        const sameGroup = a.groupId && b.groupId && a.groupId === b.groupId;
+        const recentInteractionKey = `${a.id}|${b.id}`;
+        const recentInteractionTick = Number(state.recentInteractions[recentInteractionKey] || -9999);
+        const recentlyInteracted = (currentTick - recentInteractionTick) <= 4;
+        const prioritized = sameFaction || sameGroup || recentlyInteracted;
+
+        if (budget.used >= RELATIONSHIP_UPDATES_PER_ACTOR_PER_TICK && !prioritized) return;
+        if (isPairCoolingDown && !prioritized) return;
+
+        _updateRelationship.call(this, a, b, delta);
+        budget.used++;
+        state.relationshipPairCooldowns[pairKey] = currentTick;
+        state.recentInteractions[`${a.id}|${b.id}`] = currentTick;
+        state.recentInteractions[`${b.id}|${a.id}`] = currentTick;
+    };
+
     EmergentManager.registerTickHandler("social_groups", 27, function(state) {
         const safeState = this.ensureSocialNarrativeState(state);
         if (!safeState) return;
+        this.socialNarrativeDebug("social_groups tick", {
+            tick: safeState.ticks,
+            groupCount: Object.keys(safeState.socialGroups || {}).length
+        });
 
         const characters = Array.isArray(safeState.characters) ? safeState.characters : [];
         let checks = 0;
+        let formations = 0;
         for (const character of characters) {
+            if (!character || !character.isAlive) continue;
+            this.ensureDisplayName(character, safeState);
+            if (formations >= MAX_GROUP_FORMATIONS_PER_TICK) break;
             if (checks >= MAX_FORMATION_CHECKS_PER_TICK) break;
-            if (!character || !character.isAlive || character.groupId) continue;
+            if (character.groupId) continue;
             checks++;
-            if (Math.randomInt(100) < 25) {
-                this.tryFormGroupFromCharacter(character, safeState);
+
+            // Higher chance early so groups become visible in first 5-10 ticks.
+            const earlyTicks = Number(safeState.ticks || 0) <= 10;
+            const chance = earlyTicks ? 75 : 35;
+            if (Math.randomInt(100) < chance) {
+                if (this.tryFormGroupFromCharacter(character, safeState)) formations++;
             }
+        }
+        this.socialNarrativeDebug("social_groups formation summary", { checks: checks, formations: formations });
+
+        for (const character of characters) {
+            if (!character || !character.isAlive) continue;
+            this.ensureDisplayName(character, safeState);
         }
 
         const groups = Object.values(safeState.socialGroups || {});
@@ -696,7 +873,7 @@ Imported.EmergentWorld_SocialNarratives = true;
                         this.logEvent("social_group_joined", {
                             groupId: group.id,
                             characterId: outsider.id,
-                            characterName: outsider.name
+                            characterName: this.getCharacterLabel(outsider, safeState)
                         });
                     }
                 }
@@ -712,7 +889,7 @@ Imported.EmergentWorld_SocialNarratives = true;
                     this.logEvent("social_group_left", {
                         groupId: group.id,
                         characterId: member.id,
-                        characterName: member.name
+                        characterName: this.getCharacterLabel(member, safeState)
                     });
                 }
             }
@@ -758,16 +935,34 @@ Imported.EmergentWorld_SocialNarratives = true;
             participants: n.participants,
             summary: n.summary
         }));
+        const recentGroupActions = (state.eventLog || [])
+            .filter(e => {
+                const eventAge = Number(state.ticks || 0) - Number(e.timestamp || 0);
+                const groupEventTypes = {
+                    social_group_created: true,
+                    social_group_trade: true,
+                    social_group_conflict: true,
+                    social_group_disbanded: true,
+                    character_joined_group: true
+                };
+                return eventAge <= RECENT_GROUP_ACTION_WINDOW && !!groupEventTypes[e.type];
+            })
+            .slice(-8)
+            .map(e => `${e.type}@${e.timestamp}`);
 
         console.log("[Emergent Social Snapshot]", {
             tick: state.ticks,
             groups: groupSummary,
-            narratives: narrativeSummary
+            narratives: narrativeSummary,
+            recentGroupActions: recentGroupActions
         });
 
         if ($gameMessage) {
             $gameMessage.add(`Social Groups: ${groups.length}`);
             $gameMessage.add(`Narratives: ${narratives.length} (${activeNarratives.length} active)`);
+            if (recentGroupActions.length > 0) {
+                $gameMessage.add(`Recent Group Actions: ${recentGroupActions.length}`);
+            }
         }
     });
 
