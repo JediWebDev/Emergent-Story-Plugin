@@ -30,6 +30,9 @@ Imported.EmergentWorld_SocialNarratives = true;
     const CONFLICT_REPEAT_THRESHOLD = 3;
     const RELATIONSHIP_UPDATES_PER_ACTOR_PER_TICK = 2;
     const RELATIONSHIP_PAIR_COOLDOWN_TICKS = 3;
+    const OPINION_UPDATES_PER_ACTOR_PER_TICK = 2;
+    const OPINION_TARGET_COOLDOWN_TICKS = 4;
+    const OPINION_MAX_TOTAL_DRIFT_PER_TICK = 2;
     const RECENT_GROUP_ACTION_WINDOW = 25;
 
     const _Game_System_initialize = Game_System.prototype.initialize;
@@ -72,6 +75,15 @@ Imported.EmergentWorld_SocialNarratives = true;
         }
         if (!safeState.displayNameRegistry || typeof safeState.displayNameRegistry !== "object") {
             safeState.displayNameRegistry = {};
+        }
+        if (!safeState.opinionUpdateBudgets || typeof safeState.opinionUpdateBudgets !== "object") {
+            safeState.opinionUpdateBudgets = {};
+        }
+        if (!safeState.opinionTargetCooldowns || typeof safeState.opinionTargetCooldowns !== "object") {
+            safeState.opinionTargetCooldowns = {};
+        }
+        if (!safeState.opinionTickCache || typeof safeState.opinionTickCache !== "object") {
+            safeState.opinionTickCache = {};
         }
         return safeState;
     };
@@ -806,6 +818,118 @@ Imported.EmergentWorld_SocialNarratives = true;
         state.relationshipPairCooldowns[pairKey] = currentTick;
         state.recentInteractions[`${a.id}|${b.id}`] = currentTick;
         state.recentInteractions[`${b.id}|${a.id}`] = currentTick;
+    };
+
+    const _updateOpinion = EmergentManager.updateOpinion;
+    EmergentManager.updateOpinion = function(character, target, value, source) {
+        if (!character || target === undefined || target === null) return;
+        const state = this.ensureSocialNarrativeState();
+        if (!state) return _updateOpinion.call(this, character, target, value);
+
+        const charId = Number(character.id);
+        const targetKey = String(target);
+        const sourceKey = String(source || "unknown");
+        const currentTick = Number(state.ticks || 0);
+        const requestedDelta = Number(value) || 0;
+        if (requestedDelta === 0) return;
+
+        const budgetKey = String(charId);
+        const existingBudget = state.opinionUpdateBudgets[budgetKey];
+        if (!existingBudget || existingBudget.tick !== currentTick) {
+            state.opinionUpdateBudgets[budgetKey] = { tick: currentTick, used: 0, driftApplied: 0 };
+        }
+        const budget = state.opinionUpdateBudgets[budgetKey];
+
+        const tickCacheKey = `${charId}|${targetKey}|${currentTick}`;
+        const existingTickRecord = state.opinionTickCache[tickCacheKey] || null;
+        const cooldownKey = `${charId}|${targetKey}`;
+        const cooldownTick = Number(state.opinionTargetCooldowns[cooldownKey] || -9999);
+        const onCooldown = (currentTick - cooldownTick) < OPINION_TARGET_COOLDOWN_TICKS;
+
+        const sameFactionTarget = targetKey === String(character.faction || "");
+        const currentGroup = this.getCharacterGroup(character);
+        const groupGoal = String(currentGroup && currentGroup.goal || "");
+        const targetSupportsGroup = groupGoal.includes("trade") && targetKey === "merchants";
+        const prioritizedOpinionUpdate = sameFactionTarget || targetSupportsGroup;
+
+        // Tick-level dedup + source arbitration.
+        if (existingTickRecord) {
+            if (existingTickRecord.bySource && existingTickRecord.bySource[sourceKey] !== undefined) {
+                this.socialNarrativeDebug("Opinion skip: duplicate in same tick", {
+                    characterId: charId,
+                    target: targetKey,
+                    source: sourceKey
+                });
+                return;
+            }
+
+            // Source guard: only strongest delta survives same-tick contention.
+            if (Math.abs(requestedDelta) <= Math.abs(existingTickRecord.appliedDelta || 0)) {
+                if (!existingTickRecord.bySource) existingTickRecord.bySource = {};
+                existingTickRecord.bySource[sourceKey] = requestedDelta;
+                this.socialNarrativeDebug("Opinion skip: weaker delta ignored", {
+                    characterId: charId,
+                    target: targetKey,
+                    source: sourceKey,
+                    incoming: requestedDelta,
+                    kept: existingTickRecord.appliedDelta
+                });
+                return;
+            }
+        } else if (onCooldown && !prioritizedOpinionUpdate) {
+            this.socialNarrativeDebug("Opinion skip: cooldown active", {
+                characterId: charId,
+                target: targetKey,
+                source: sourceKey,
+                cooldownSinceTick: cooldownTick
+            });
+            return;
+        }
+
+        if (budget.used >= OPINION_UPDATES_PER_ACTOR_PER_TICK && !existingTickRecord && !prioritizedOpinionUpdate) {
+            this.socialNarrativeDebug("Opinion skip: budget exceeded", {
+                characterId: charId,
+                source: sourceKey,
+                used: budget.used
+            });
+            return;
+        }
+
+        // Apply total drift clamp per tick per character.
+        let proposedDelta = requestedDelta;
+        if (existingTickRecord) {
+            // Replace weaker same-tick update with stronger one (delta adjustment only).
+            proposedDelta = requestedDelta - Number(existingTickRecord.appliedDelta || 0);
+        }
+
+        const minRemaining = -OPINION_MAX_TOTAL_DRIFT_PER_TICK - Number(budget.driftApplied || 0);
+        const maxRemaining = OPINION_MAX_TOTAL_DRIFT_PER_TICK - Number(budget.driftApplied || 0);
+        const clampedDelta = Math.max(minRemaining, Math.min(maxRemaining, proposedDelta));
+        if (clampedDelta === 0) {
+            this.socialNarrativeDebug("Opinion skip: per-tick drift cap reached", {
+                characterId: charId,
+                source: sourceKey,
+                driftApplied: budget.driftApplied
+            });
+            return;
+        }
+
+        _updateOpinion.call(this, character, targetKey, clampedDelta);
+
+        budget.driftApplied += clampedDelta;
+        if (!existingTickRecord) {
+            budget.used += 1;
+        }
+        state.opinionTargetCooldowns[cooldownKey] = currentTick;
+
+        const nextRecord = existingTickRecord || {
+            tick: currentTick,
+            appliedDelta: 0,
+            bySource: {}
+        };
+        nextRecord.appliedDelta = (existingTickRecord ? Number(existingTickRecord.appliedDelta || 0) : 0) + clampedDelta;
+        nextRecord.bySource[sourceKey] = requestedDelta;
+        state.opinionTickCache[tickCacheKey] = nextRecord;
     };
 
     EmergentManager.registerTickHandler("social_groups", 27, function(state) {
