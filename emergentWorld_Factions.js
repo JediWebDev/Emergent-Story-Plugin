@@ -111,6 +111,9 @@ Imported.EmergentWorld_Factions = true;
 
         if (!merchants || !bandits) return; // Safety check
 
+        const simTick = Number(state && state.ticks) || 0;
+        const earlyGame = simTick < 8;
+
         // Natural simulation growth rules based on RNG starting stats
         if (bandits.military < merchants.military) {
             this.modVar("foodSupply", 5);
@@ -120,8 +123,10 @@ Imported.EmergentWorld_Factions = true;
             // Bandits are stronger! They drain the town and grow their power.
             this.modVar("prosperity", -2);
             this.modVar("foodSupply", -2);
-            this.modVar("banditPower", 5); 
-            this.modFactionStat("bandits", "military", 2);
+            const bp = earlyGame ? 2 : 4;
+            const bm = earlyGame ? 1 : 2;
+            this.modVar("banditPower", bp);
+            this.modFactionStat("bandits", "military", bm);
         }
 
         this.logEvent("faction_tick_summary", {

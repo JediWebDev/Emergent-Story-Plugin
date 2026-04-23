@@ -61,8 +61,6 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
     window.EmergentWorldBootstrap = window.EmergentWorldBootstrap || {};
 
     window.EmergentWorldBootstrap.run = function(state) {
-        console.log("[WorldBootstrap] RUN CALLED");
-        console.trace();
         if (window.EMERGENT_WORLD_INITIALIZED) {
             console.warn("[WorldBootstrap] Attempted double initialization — blocked.");
             return;

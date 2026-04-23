@@ -145,6 +145,10 @@ Imported.EmergentWorld_SocialNarratives = true;
         return personality;
     };
 
+    const _roundTraitMultiplier = function(value) {
+        return Math.round(Math.max(-1.5, Math.min(2.0, Number(value) || 0)) * 100) / 100;
+    };
+
     EmergentManager.getPersonalityOpinionModifier = function(character, targetKey, baseDelta) {
         const personality = this.ensurePersonalityProfile(character) || {};
         const ownFaction = String(character && character.faction || "");
@@ -158,7 +162,7 @@ Imported.EmergentWorld_SocialNarratives = true;
             if (targetKey !== ownFaction && baseDelta > 0) modifier -= 0.3;
             if (targetKey !== ownFaction && baseDelta < 0) modifier += 0.2;
         }
-        return Math.max(-1.5, Math.min(2.0, modifier));
+        return _roundTraitMultiplier(modifier);
     };
 
     EmergentManager.interpretOpinionDelta = function(character, targetKey, baseDelta, sourceKey) {
@@ -175,15 +179,6 @@ Imported.EmergentWorld_SocialNarratives = true;
         if (finalDelta === 0 && Math.abs(baseDelta) >= 1) {
             finalDelta = Math.randomInt(100) < 60 ? Math.sign(baseDelta) : 0;
         }
-        this.socialNarrativeDebug("Opinion interpreted", {
-            characterId: character && character.id,
-            target: targetKey,
-            source: sourceKey,
-            baseDelta: baseDelta,
-            personalityModifier: personalityModifier,
-            randomness: randomness,
-            finalDelta: finalDelta
-        });
         return {
             finalDelta: finalDelta,
             personalityModifier: personalityModifier,
@@ -217,7 +212,7 @@ Imported.EmergentWorld_SocialNarratives = true;
         if (personality.cautious && action === "act_aggressively") multiplier -= 0.3;
         if (personality.distrustful && action === "act_aggressively") multiplier += 0.28;
         if (personality.loyal && (action === "follow_leader_action" || action === "support_group_action")) multiplier += 0.25;
-        return Math.max(0.2, Math.min(2.2, multiplier));
+        return Math.round(Math.max(0.2, Math.min(2.2, multiplier)) * 100) / 100;
     };
 
     EmergentManager.getOpinionActionBias = function(character, action) {
@@ -920,7 +915,7 @@ Imported.EmergentWorld_SocialNarratives = true;
         });
 
         const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
-        if (totalWeight <= 0) return _decideAction.call(this, character, context);
+        if (!isFinite(totalWeight) || totalWeight <= 0) return _decideAction.call(this, character, context);
 
         let roll = Math.random() * totalWeight;
         let chosen = weighted[weighted.length - 1].action;
@@ -937,23 +932,7 @@ Imported.EmergentWorld_SocialNarratives = true;
             tracker.counts[chosen] = Number(tracker.counts[chosen] || 0) + 1;
         }
 
-        this.socialNarrativeDebug("Decision weighted selection", {
-            characterId: character.id,
-            faction: character.faction,
-            tick: tick,
-            chosen: chosen,
-            weights: weighted.map(item => ({
-                action: item.action,
-                base: item.baseScore,
-                memoryBias: item.memoryBias,
-                opinionBias: item.opinionBias,
-                personalityMult: item.personalityMult,
-                finalWeight: Number(item.weight.toFixed(3))
-            })),
-            factionDistribution: tracker ? { total: tracker.total, counts: tracker.counts } : null
-        });
-
-        return chosen;
+        return chosen != null && chosen !== "" ? chosen : "do_nothing";
     };
 
     const _applySocialInfluence = EmergentManager.applySocialInfluence;
@@ -1075,11 +1054,6 @@ Imported.EmergentWorld_SocialNarratives = true;
         // Tick-level dedup + source arbitration.
         if (existingTickRecord) {
             if (existingTickRecord.bySource && existingTickRecord.bySource[sourceKey] !== undefined) {
-                this.socialNarrativeDebug("Opinion skip: duplicate in same tick", {
-                    characterId: charId,
-                    target: targetKey,
-                    source: sourceKey
-                });
                 return;
             }
 
@@ -1087,31 +1061,13 @@ Imported.EmergentWorld_SocialNarratives = true;
             if (Math.abs(requestedDelta) <= Math.abs(existingTickRecord.appliedDelta || 0)) {
                 if (!existingTickRecord.bySource) existingTickRecord.bySource = {};
                 existingTickRecord.bySource[sourceKey] = requestedDelta;
-                this.socialNarrativeDebug("Opinion skip: weaker delta ignored", {
-                    characterId: charId,
-                    target: targetKey,
-                    source: sourceKey,
-                    incoming: requestedDelta,
-                    kept: existingTickRecord.appliedDelta
-                });
                 return;
             }
         } else if (onCooldown && !prioritizedOpinionUpdate) {
-            this.socialNarrativeDebug("Opinion skip: cooldown active", {
-                characterId: charId,
-                target: targetKey,
-                source: sourceKey,
-                cooldownSinceTick: cooldownTick
-            });
             return;
         }
 
         if (budget.used >= OPINION_UPDATES_PER_ACTOR_PER_TICK && !existingTickRecord && !prioritizedOpinionUpdate) {
-            this.socialNarrativeDebug("Opinion skip: budget exceeded", {
-                characterId: charId,
-                source: sourceKey,
-                used: budget.used
-            });
             return;
         }
 
@@ -1126,11 +1082,6 @@ Imported.EmergentWorld_SocialNarratives = true;
         const maxRemaining = OPINION_MAX_TOTAL_DRIFT_PER_TICK - Number(budget.driftApplied || 0);
         const clampedDelta = Math.max(minRemaining, Math.min(maxRemaining, proposedDelta));
         if (clampedDelta === 0) {
-            this.socialNarrativeDebug("Opinion skip: per-tick drift cap reached", {
-                characterId: charId,
-                source: sourceKey,
-                driftApplied: budget.driftApplied
-            });
             return;
         }
 

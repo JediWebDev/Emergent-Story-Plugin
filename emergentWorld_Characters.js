@@ -221,9 +221,10 @@ const VisualPools = {
 
         const targetKey = String(target);
         const delta = Number(value) || 0;
-        const current = Number(character.opinions[targetKey]) || 0;
+        const current = Math.round(Math.max(-100, Math.min(100, Number(character.opinions[targetKey]) || 0)));
         const nextValue = current + delta;
-        const clamped = Math.max(-100, Math.min(100, nextValue));
+        const clamped = Math.round(Math.max(-100, Math.min(100, nextValue)));
+        if (clamped === current) return;
         character.opinions[targetKey] = clamped;
 
         if (delta !== 0) {
@@ -412,7 +413,8 @@ const VisualPools = {
         const top = scored[0];
         const second = scored[1];
         const chooseSecondBest = second && Math.randomInt(100) < 15;
-        return chooseSecondBest ? second.action : top.action;
+        const chosen = chooseSecondBest ? second.action : top.action;
+        return chosen != null ? chosen : "do_nothing";
     };
 
     EmergentManager.executeAction = function(character, action, context) {
@@ -511,6 +513,7 @@ const VisualPools = {
         const characters = state && Array.isArray(state.characters) ? state.characters : [];
         for (const character of characters) {
             if (!character || !character.isAlive) continue;
+            if (character.mode === "AUTONOMOUS") continue;
             ensureCharacterMindState(character);
 
             const context = this.buildDecisionContext(character, state);
@@ -548,7 +551,10 @@ const VisualPools = {
                 context.coordinationAction = "do_nothing";
             }
 
-            const action = this.decideAction(character, context);
+            let action = this.decideAction(character, context);
+            if (action == null || action === "") {
+                action = "do_nothing";
+            }
             this.executeAction(character, action, context);
             character._lastAction = action;
             character._lastActionTick = context.tick;
@@ -578,6 +584,7 @@ const VisualPools = {
         const characters = state && Array.isArray(state.characters) ? state.characters : [];
         for (const actor of characters) {
             if (!actor || !actor.isAlive) continue;
+            if (actor.mode === "AUTONOMOUS") continue;
             if (actor._lastActionTick !== state.ticks) continue;
             this.applySocialInfluence(actor, actor._lastAction, state);
 
