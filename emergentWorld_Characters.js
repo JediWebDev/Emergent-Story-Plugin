@@ -258,11 +258,26 @@ const VisualPools = {
         const bKey = String(a.id);
         const oldAB = Number(a.relationships[aKey]) || 0;
         const oldBA = Number(b.relationships[bKey]) || 0;
-        const nextAB = Math.max(-100, Math.min(100, oldAB + amount));
-        const nextBA = Math.max(-100, Math.min(100, oldBA + amount));
+        const nextAB = Math.round(Math.max(-100, Math.min(100, oldAB + amount)));
+        const nextBA = Math.round(Math.max(-100, Math.min(100, oldBA + amount)));
 
         a.relationships[aKey] = nextAB;
         b.relationships[bKey] = nextBA;
+
+        const bucketABChanged = Math.floor(oldAB / 5) !== Math.floor(nextAB / 5);
+        const bucketBAChanged = Math.floor(oldBA / 5) !== Math.floor(nextBA / 5);
+        if (!bucketABChanged && !bucketBAChanged) return;
+
+        const gs = $gameSystem && $gameSystem.emergentState ? $gameSystem.emergentState() : null;
+        const tick = gs ? Number(gs.ticks || 0) : 0;
+        const sortedPair = [String(a.id), String(b.id)].sort().join("|");
+        if (gs) {
+            if (!gs._relationshipEventLogTick || gs._relationshipEventLogTick.tick !== tick) {
+                gs._relationshipEventLogTick = { tick: tick, pairs: {} };
+            }
+            if (gs._relationshipEventLogTick.pairs[sortedPair]) return;
+            gs._relationshipEventLogTick.pairs[sortedPair] = true;
+        }
 
         this.logEvent("npc_relationship_changed", {
             aId: a.id,
@@ -411,6 +426,10 @@ const VisualPools = {
         });
 
         const top = scored[0];
+        const totalScore = scored.reduce((sum, s) => sum + (Number(s.score) || 0), 0);
+        if (!top || !isFinite(top.score) || !isFinite(totalScore) || totalScore <= 0) {
+            return "do_nothing";
+        }
         const second = scored[1];
         const chooseSecondBest = second && Math.randomInt(100) < 15;
         const chosen = chooseSecondBest ? second.action : top.action;

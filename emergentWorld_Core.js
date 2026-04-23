@@ -54,6 +54,9 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
     //=============================================================================
     window.EMERGENT_WORLD_INITIALIZED = window.EMERGENT_WORLD_INITIALIZED || false;
     window.EMERGENT_WORLD_BOOTSTRAPPING = window.EMERGENT_WORLD_BOOTSTRAPPING || false;
+    if (typeof window.__EMERGENT_WORLD_INITIALIZED__ === "undefined") {
+        window.__EMERGENT_WORLD_INITIALIZED__ = false;
+    }
 
     //=============================================================================
     // Single bootstrap orchestrator (world gen then agent activation)
@@ -61,6 +64,10 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
     window.EmergentWorldBootstrap = window.EmergentWorldBootstrap || {};
 
     window.EmergentWorldBootstrap.run = function(state) {
+        if (window.__EMERGENT_WORLD_INITIALIZED__) {
+            console.warn("[WorldBootstrap] Skipped duplicate initialization");
+            return;
+        }
         if (window.EMERGENT_WORLD_INITIALIZED) {
             console.warn("[WorldBootstrap] Attempted double initialization — blocked.");
             return;
@@ -123,6 +130,7 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
             }
 
             window.EMERGENT_WORLD_INITIALIZED = true;
+            window.__EMERGENT_WORLD_INITIALIZED__ = true;
             resolvedState._emergentWorldBootstrapCompleted = true;
 
             const npcLen = Array.isArray(resolvedState.characters) ? resolvedState.characters.length : 0;
@@ -141,7 +149,7 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
     };
 
     EmergentManager.bootstrapNewGame = function() {
-        if (window.EMERGENT_WORLD_INITIALIZED) {
+        if (window.__EMERGENT_WORLD_INITIALIZED__ || window.EMERGENT_WORLD_INITIALIZED) {
             console.warn("[WorldBootstrap] Blocked out-of-order bootstrapNewGame call.");
             return;
         }
@@ -151,6 +159,7 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
     const _DataManager_setupNewGame = DataManager.setupNewGame;
     DataManager.setupNewGame = function() {
         window.EMERGENT_WORLD_INITIALIZED = false;
+        window.__EMERGENT_WORLD_INITIALIZED__ = false;
         window.EMERGENT_WORLD_BOOTSTRAPPING = false;
         _DataManager_setupNewGame.call(this);
         const emergentState = $gameSystem && $gameSystem._emergentState;
@@ -263,6 +272,7 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
     EmergentManager.tickSimulation = function () {
         const state = $gameSystem.emergentState();
         state.ticks++;
+        state._relationshipEventLogTick = { tick: state.ticks, pairs: {} };
         this.logEvent("world_tick", { tick: state.ticks });
         
         // Trigger the Master Simulation Tick Common Event

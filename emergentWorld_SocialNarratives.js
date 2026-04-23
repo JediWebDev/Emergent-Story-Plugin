@@ -38,6 +38,9 @@ Imported.EmergentWorld_SocialNarratives = true;
     const DECISION_DIVERGENCE_THRESHOLD = 0.65;
     const DECISION_DIVERGENCE_MIN_SAMPLES = 3;
     const DECISION_DIVERGENCE_REDUCTION = 0.45;
+    const EARLY_OPINION_TICKS = 10;
+    const MAX_SOCIAL_GROUPS = 24;
+    const GROUP_FORM_COOLDOWN_TICKS = 10;
 
     const _Game_System_initialize = Game_System.prototype.initialize;
     Game_System.prototype.initialize = function() {
@@ -279,10 +282,12 @@ Imported.EmergentWorld_SocialNarratives = true;
         };
 
         state.socialGroups[id] = group;
+        const formTick = Number(state.ticks || 0);
         for (const memberId of group.members) {
             const member = this.getCharacter(memberId);
             if (member) {
                 member.groupId = id;
+                member.lastGroupFormTick = formTick;
                 this.ensureDisplayName(member, state);
             }
         }
@@ -460,6 +465,13 @@ Imported.EmergentWorld_SocialNarratives = true;
 
     EmergentManager.tryFormGroupFromCharacter = function(character, state) {
         if (!character || !character.isAlive || character.groupId) return false;
+        const wt = Number(state && state.ticks) || 0;
+        if (character.lastGroupFormTick != null && wt - character.lastGroupFormTick < GROUP_FORM_COOLDOWN_TICKS) {
+            return false;
+        }
+        if (Object.keys((state && state.socialGroups) || {}).length >= MAX_SOCIAL_GROUPS) {
+            return false;
+        }
         const nearby = this.getNearbyNPCs(character, state);
         const candidates = [];
         this.socialNarrativeDebug("Formation attempt", { characterId: character.id, nearbyCount: nearby.length });
@@ -915,7 +927,7 @@ Imported.EmergentWorld_SocialNarratives = true;
         });
 
         const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
-        if (!isFinite(totalWeight) || totalWeight <= 0) return _decideAction.call(this, character, context);
+        if (!isFinite(totalWeight) || totalWeight <= 0) return "do_nothing";
 
         let roll = Math.random() * totalWeight;
         let chosen = weighted[weighted.length - 1].action;
@@ -1027,9 +1039,18 @@ Imported.EmergentWorld_SocialNarratives = true;
         const sourceKey = String(source || "unknown");
         const currentTick = Number(state.ticks || 0);
         this.ensurePersonalityProfile(character);
-        const baseDelta = Number(value) || 0;
+        let baseDelta = Number(value) || 0;
+        const worldTick = Number(
+            ($gameSystem && $gameSystem.emergentState && $gameSystem.emergentState().ticks) ||
+            state.ticks ||
+            0
+        );
+        if (worldTick < EARLY_OPINION_TICKS && baseDelta !== 0) {
+            baseDelta *= 0.5;
+        }
         const interpretation = this.interpretOpinionDelta(character, targetKey, baseDelta, sourceKey);
-        const requestedDelta = Number(interpretation.finalDelta) || 0;
+        let requestedDelta = Number(interpretation.finalDelta) || 0;
+        requestedDelta = Math.max(-2, Math.min(2, requestedDelta));
         if (requestedDelta === 0) return;
 
         const budgetKey = String(charId);
@@ -1054,6 +1075,7 @@ Imported.EmergentWorld_SocialNarratives = true;
         // Tick-level dedup + source arbitration.
         if (existingTickRecord) {
             if (existingTickRecord.bySource && existingTickRecord.bySource[sourceKey] !== undefined) {
+                existingTickRecord.bySource[sourceKey] = requestedDelta;
                 return;
             }
 
@@ -1122,9 +1144,8 @@ Imported.EmergentWorld_SocialNarratives = true;
             if (character.groupId) continue;
             checks++;
 
-            // Higher chance early so groups become visible in first 5-10 ticks.
             const earlyTicks = Number(safeState.ticks || 0) <= 10;
-            const chance = earlyTicks ? 75 : 35;
+            const chance = earlyTicks ? 38 : 35;
             if (Math.randomInt(100) < chance) {
                 if (this.tryFormGroupFromCharacter(character, safeState)) formations++;
             }

@@ -45,7 +45,20 @@ Imported.EmergentWorld_Factions = true;
         // This ensures modFactionStat("villagers", ...) is never a silent no-op.
         state.factions["villagers"] = this.rollFactionStats("The Free Peasantry", "Aldenmere", "Humble");
         state.factions["bandits"] = this.rollFactionStats("The Ashen Wolves", "Wildlands", "Rebellious");
-        
+
+        const clampStat = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
+        const gameplayFactions = ["merchants", "bandits", "villagers"];
+        for (const fid of gameplayFactions) {
+            const f = state.factions[fid];
+            if (!f) continue;
+            f.military = clampStat(f.military, 40, 60);
+            f.wealth = clampStat(f.wealth, 40, 60);
+            f.military += (50 - f.military) * 0.05;
+            f.wealth += (50 - f.wealth) * 0.05;
+            f.military = Math.round(f.military);
+            f.wealth = Math.round(f.wealth);
+        }
+
         // Now that the factions are generated, calculate the starting global values
         this.recalculateGlobalMilitary();
     };
@@ -128,6 +141,20 @@ Imported.EmergentWorld_Factions = true;
             this.modVar("banditPower", bp);
             this.modFactionStat("bandits", "military", bm);
         }
+
+        const driftTowardNeutral = (fid) => {
+            const f = this.getFaction(fid);
+            if (!f) return;
+            if (f.military !== undefined) {
+                f.military = Math.round(Math.max(0, f.military + (50 - f.military) * 0.05));
+            }
+            if (f.wealth !== undefined) {
+                f.wealth = Math.round(Math.max(0, f.wealth + (50 - f.wealth) * 0.05));
+            }
+        };
+        driftTowardNeutral("merchants");
+        driftTowardNeutral("bandits");
+        driftTowardNeutral("villagers");
 
         this.logEvent("faction_tick_summary", {
             merchantsWealth: merchants.wealth,
