@@ -1,158 +1,241 @@
 /*:
  * @target MZ
- * @plugindesc [v1.0] Layer 8 - MZ Integration (Visuals & Dialogue)
+ * @plugindesc [v2.0] MZ Integration — crisis, leaders, hostility switches
  * @author dijOTTER
  * @base EmergentWorld_Core
  * @base EmergentWorld_Characters
+ * @base EmergentWorld_CrisisGen
  *
  * @command CheckFactionTrait
  * @text Check Faction Trait
- * @desc Turns a switch ON if a faction has a specific trait, useful for changing map visuals.
+ * @desc Turns a switch ON if a faction has a specific trait (legacy traits or crisisTraits).
  *
  * @arg factionId
  * @text Faction ID
  * @type string
- * @default valemont
+ * @default merchants
  *
  * @arg trait
  * @text Trait to Check
  * @type string
- * @default Rebellious
+ * @default OPPORTUNIST
  *
  * @arg switchId
  * @text Switch ID to Toggle
  * @type switch
  *
+ * @command AdvanceNarrativeTurn
+ * @text Advance Narrative Turn
+ * @desc Runs one crisis simulation beat (inn sleep, dungeon clear, milestone).
+ *
+ * @arg reason
+ * @text Reason (for logs)
+ * @type string
+ * @default milestone
+ *
+ * @command ExportCrisisToVariables
+ * @text Export Crisis To Variables
+ * @desc Writes crisis name, antagonist, tension to game variables for message boxes.
+ *
+ * @arg varCrisisName
+ * @type variable
+ * @default 20
+ *
+ * @arg varAntagonist
+ * @type variable
+ * @default 21
+ *
+ * @arg varTension
+ * @type variable
+ * @default 22
+ *
+ * @command ExportLeaderToVariables
+ * @text Export Leader To Variables
+ * @desc Writes leader name, trait, relationship, stance for dialogue branches.
+ *
+ * @arg leaderId
+ * @type string
+ * @default leader_merchants
+ *
+ * @arg varName
+ * @type variable
+ * @default 30
+ *
+ * @arg varTrait
+ * @type variable
+ * @default 31
+ *
+ * @arg varRelationship
+ * @type variable
+ * @default 32
+ *
+ * @arg varStance
+ * @type variable
+ * @default 33
+ *
+ * @command ModifyLeaderRelationship
+ * @text Modify Leader Relationship
+ * @desc Shifts relationshipToPlayer; below -50 marks faction hostile (switch 61–65).
+ *
+ * @arg leaderId
+ * @type string
+ * @default leader_merchants
+ *
+ * @arg amount
+ * @type number
+ * @default -5
+ *
+ * @command SetLeaderStanceCommand
+ * @text Set Leader Stance
+ * @arg leaderId
+ * @type string
+ * @default leader_villagers
+ *
+ * @arg stance
+ * @type string
+ * @default OPPOSE
+ *
+ * @command RefreshHostilitySwitches
+ * @text Refresh Hostility Switches
+ * @desc Re-applies faction hostileToPlayer to switches 61–65.
+ *
  * @command SpeakCharacterMemory
- * @text Speak Character Memory
- * @desc Makes an NPC state their most recent memory or emergent history.
+ * @text Speak Leader Line
+ * @desc Shows the leader's stance on the crisis (replaces old memory dialogue).
  *
  * @arg charId
- * @text Character ID (string npc.id)
+ * @text Leader ID
  * @type string
- * @default emergent_npc_id
- * @desc Replace with the full string npc.id from console after a new game (WorldBootstrap logs).
+ * @default leader_merchants
  *
  * @command CheckDragonEcho
  * @text Check Dragon Echo Level
- * @desc Checks if the Dragon Echo is above a certain threshold to trigger environmental effects.
- *
  * @arg threshold
- * @text Threshold Value
  * @type number
  * @default 30
- *
  * @arg switchId
- * @text Switch ID to Toggle
  * @type switch
- * * @command CheckNPCQuestStatus
+ *
+ * @command CheckNPCQuestStatus
  * @text Check NPC Quest Status
- * @desc Checks if this specific NPC has an emergent quest to give or receive.
- *
  * @arg npcName
- * @text NPC Name
  * @type string
- * @desc The exact name of the NPC (e.g., Alden)
- *
  * @arg switchAvailable
- * @text Quest Available Switch
  * @type switch
- * @desc Turns ON if they have a new quest to give.
- *
  * @arg switchTurnIn
- * @text Ready to Turn In Switch
  * @type switch
- * @desc Turns ON if the player has met the objectives and needs to turn it in.
  */
 
 (() => {
     const pluginName = "emergentWorld_MZIntegration";
 
-    // 1. Visual Integration: Faction Traits to Event Pages
+    const _Scene_Map_start = Scene_Map.prototype.start;
+    Scene_Map.prototype.start = function() {
+        _Scene_Map_start.call(this);
+        if (window.EmergentManager && typeof EmergentManager.refreshFactionHostilitySwitches === "function") {
+            EmergentManager.refreshFactionHostilitySwitches();
+        }
+    };
+
     PluginManager.registerCommand(pluginName, "CheckFactionTrait", args => {
         const faction = EmergentManager.getFaction(args.factionId);
         const switchId = Number(args.switchId);
-
-        if (faction && faction.traits.includes(args.trait)) {
-            $gameSwitches.setValue(switchId, true);
-        } else {
+        const want = String(args.trait || "");
+        if (!faction) {
             $gameSwitches.setValue(switchId, false);
+            return;
         }
+        const legacy = Array.isArray(faction.traits) && faction.traits.includes(want);
+        const crisisT = Array.isArray(faction.crisisTraits) && faction.crisisTraits.includes(want);
+        $gameSwitches.setValue(switchId, legacy || crisisT);
     });
 
-    // 2. Visual Integration: Global World Pressures (Dragon Echo)
-    PluginManager.registerCommand(pluginName, "CheckDragonEcho", args => {
-        const echoLevel = EmergentManager.getVar("dragonEcho");
-        const switchId = Number(args.switchId);
-
-        if (echoLevel >= Number(args.threshold)) {
-            $gameSwitches.setValue(switchId, true);
-        } else {
-            $gameSwitches.setValue(switchId, false);
-        }
+    PluginManager.registerCommand(pluginName, "AdvanceNarrativeTurn", args => {
+        const reason = args.reason != null ? String(args.reason) : "milestone";
+        EmergentManager.advanceNarrativeTurn(reason);
     });
 
-    // 3. NPC Update: Dynamic Dialogue Generation
+    PluginManager.registerCommand(pluginName, "ExportCrisisToVariables", args => {
+        const c = EmergentManager.getCurrentCrisis && EmergentManager.getCurrentCrisis();
+        const state = $gameSystem.emergentState();
+        $gameVariables.setValue(Number(args.varCrisisName), c ? c.name : "");
+        $gameVariables.setValue(Number(args.varAntagonist), state.currentAntagonist || "");
+        $gameVariables.setValue(Number(args.varTension), Number(state.worldTension) || 0);
+    });
+
+    PluginManager.registerCommand(pluginName, "ExportLeaderToVariables", args => {
+        const lid = args.leaderId != null ? String(args.leaderId) : "";
+        const leader = EmergentManager.getLeader(lid);
+        $gameVariables.setValue(Number(args.varName), leader ? leader.name : "");
+        $gameVariables.setValue(Number(args.varTrait), leader ? leader.trait : "");
+        $gameVariables.setValue(Number(args.varRelationship), leader ? leader.relationshipToPlayer : 0);
+        $gameVariables.setValue(Number(args.varStance), leader ? leader.stanceOnCrisis : "");
+    });
+
+    PluginManager.registerCommand(pluginName, "ModifyLeaderRelationship", args => {
+        const lid = args.leaderId != null ? String(args.leaderId) : "";
+        const amt = Number(args.amount) || 0;
+        EmergentManager.modifyRelationship(lid, amt);
+    });
+
+    PluginManager.registerCommand(pluginName, "SetLeaderStanceCommand", args => {
+        const lid = args.leaderId != null ? String(args.leaderId) : "";
+        EmergentManager.setLeaderStance(lid, args.stance);
+    });
+
+    PluginManager.registerCommand(pluginName, "RefreshHostilitySwitches", () => {
+        EmergentManager.refreshFactionHostilitySwitches();
+    });
+
     PluginManager.registerCommand(pluginName, "SpeakCharacterMemory", args => {
         let cid = args.charId;
-        if (cid != null && typeof cid !== "string") {
-            console.warn("[WorldBootstrap] Non-string ID detected:", cid);
-            cid = String(cid);
-        }
-        const char = EmergentManager.getCharacter(cid);
+        if (cid != null && typeof cid !== "string") cid = String(cid);
+        const leader = EmergentManager.getLeader(cid);
 
-        if (!char) {
-            $gameMessage.add("..."); // Fallback if character isn't spawned
+        if (!leader) {
+            $gameMessage.add("...");
             return;
         }
 
-        if (char.isAlive) {
-            // Pull the most recent event from their history
-            const latestMemory = char.history[char.history.length - 1];
+        const crisis = EmergentManager.getCurrentCrisis && EmergentManager.getCurrentCrisis();
+        const crisisBit = crisis ? `On ${crisis.name}: ` : "";
+        const line = `${crisisBit}My stance is ${leader.stanceOnCrisis}. (${leader.trait})`;
 
-            // Format the dialogue box
-            $gameMessage.setSpeakerName(char.name);
-            $gameMessage.add(latestMemory);
+        $gameMessage.setSpeakerName(leader.name);
+        $gameMessage.add(line);
 
-            // Optional: Add flavor text based on faction loyalty or fear
-            const faction = EmergentManager.getFaction(char.faction);
-            if (faction && faction.fear > 50) {
-                $gameMessage.add("\\c[2]*They look around nervously...*\\c[0]");
-            }
-        } else {
-            $gameMessage.add("This person is no longer with us...");
+        const faction = EmergentManager.getFaction(leader.factionId);
+        if (faction && faction.hostileToPlayer) {
+            $gameMessage.add("\\c[2]*Their faction considers you an enemy.*\\c[0]");
         }
     });
 
-    // 4. Visual Integration: NPC Dynamic Quest Availability
+    PluginManager.registerCommand(pluginName, "CheckDragonEcho", args => {
+        const echoLevel = EmergentManager.getVar("dragonEcho");
+        const switchId = Number(args.switchId);
+        $gameSwitches.setValue(switchId, echoLevel >= Number(args.threshold));
+    });
+
     PluginManager.registerCommand(pluginName, "CheckNPCQuestStatus", args => {
         const npcName = args.npcName;
         const availableSwitch = Number(args.switchAvailable);
         const turnInSwitch = Number(args.switchTurnIn);
 
-        // Default to OFF
         $gameSwitches.setValue(availableSwitch, false);
         $gameSwitches.setValue(turnInSwitch, false);
 
         const state = $gameSystem.emergentState();
         if (!state || !state.quests) return;
 
-        // 1. Check if they have a NEW quest to give (Status: active, Objective NOT met)
-        // FIX: Using .find() so we can reference the quest's title cleanly
-        const newQuest = state.quests.find(q => q.giverName === npcName && q.status === 'active' && !q.objectiveMet);
-        
+        const newQuest = state.quests.find(q => q.giverName === npcName && q.status === "active" && !q.objectiveMet);
         if (newQuest) {
-            // Double check CGMZ hasn't already started it
-            // Using typeof check prevents crashes if CGMZ isn't loaded yet
-            const cgmzQuest = (typeof $cgmz !== 'undefined') ? $cgmz.getQuest(newQuest.title) : null;
+            const cgmzQuest = (typeof $cgmz !== "undefined") ? $cgmz.getQuest(newQuest.title) : null;
             if (!cgmzQuest || !cgmzQuest._isStarted) {
                 $gameSwitches.setValue(availableSwitch, true);
             }
         }
 
-        // 2. Check if they have a quest READY TO TURN IN (Status: active, Objective IS met)
-        const readyQuest = state.quests.find(q => q.giverName === npcName && q.status === 'active' && q.objectiveMet);
-        
+        const readyQuest = state.quests.find(q => q.giverName === npcName && q.status === "active" && q.objectiveMet);
         if (readyQuest) {
             $gameSwitches.setValue(turnInSwitch, true);
         }

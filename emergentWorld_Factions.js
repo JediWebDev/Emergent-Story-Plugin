@@ -1,86 +1,125 @@
 /*:
  * @target MZ
- * @plugindesc [v1.0] Layer 2 - Faction System (Procedural Generation)
+ * @plugindesc [v2.0] Crisis-driven factions (one leader each, no economy tick sim)
  * @author dijOTTER
  * @base EmergentWorld_Core
  *
- * @help EmergentWorld_Factions.js
- * * Generates factions dynamically at the start of a New Game with
- * randomized starting variables to ensure every seed is unique.
+ * @help emergentWorld_Factions.js
+ * Factions react to the Central Crisis via crisisTraits and decideLeaderAction().
+ * No automatic map-time simulation — narrative turns live in EmergentManager.tickSimulation.
  */
 
 var Imported = Imported || {};
 Imported.EmergentWorld_Factions = true;
 
 (() => {
-    //=============================================================================
-    // 1. Data Structure Initialization (Empty Container)
-    //=============================================================================
+    /**
+     * When crisis X is active, each faction draws 1–2 stance traits from this pool.
+     * These replace generic lore traits for the vertical slice.
+     */
+    const CRISIS_TRAIT_POOLS = {
+        UNDEAD_PLAGUE: {
+            caelmont: ["ZEALOT", "STEADFAST"],
+            valemont: ["OPPORTUNIST", "AMBITIOUS"],
+            merchants: ["OPPORTUNIST", "ISOLATIONIST"],
+            villagers: ["FEARFUL", "ZEALOT"],
+            bandits: ["OPPORTUNIST", "PREDATOR"]
+        },
+        ELEMENTAL_RIFTS: {
+            caelmont: ["PURIST", "STEADFAST"],
+            valemont: ["OPPORTUNIST", "PURIST"],
+            merchants: ["OPPORTUNIST", "ISOLATIONIST"],
+            villagers: ["FEARFUL", "ISOLATIONIST"],
+            bandits: ["OPPORTUNIST", "PREDATOR"]
+        },
+        CIVIL_WAR: {
+            caelmont: ["STEADFAST", "ZEALOT"],
+            valemont: ["AMBITIOUS", "OPPORTUNIST"],
+            merchants: ["OPPORTUNIST", "ISOLATIONIST"],
+            villagers: ["FEARFUL", "ISOLATIONIST"],
+            bandits: ["OPPORTUNIST", "PREDATOR"]
+        }
+    };
+
     const _Game_System_initialize = Game_System.prototype.initialize;
     Game_System.prototype.initialize = function() {
         _Game_System_initialize.call(this);
-        // Only create the empty object. Do not hardcode the stats here.
-        this._emergentState.factions = {};
+        if (!this._emergentState) this._emergentState = {};
+        if (!this._emergentState.factions || typeof this._emergentState.factions !== "object") {
+            this._emergentState.factions = {};
+        }
     };
 
-    //=============================================================================
-    // 3. The Faction Generator
-    //=============================================================================
     EmergentManager.generateStartingFactions = function() {
-        if (window.EMERGENT_WORLD_INITIALIZED) {
-            return;
-        }
+        if (window.EMERGENT_WORLD_INITIALIZED) return;
         if (!window.EMERGENT_WORLD_BOOTSTRAPPING) {
             console.warn("[WorldBootstrap] Blocked out-of-order initialization call.");
             return;
         }
         const state = $gameSystem.emergentState();
-        
-        // Generate the Core Factions utilizing Ardessian Lore Templates
-        state.factions["caelmont"] = this.rollFactionStats("Royal House Caelmont", "Aldenmere", "Stable");
-        state.factions["valemont"] = this.rollFactionStats("House Valemont", "Aldenmere", "Ambitious");
-        state.factions["vrakkoth"] = this.rollFactionStats("Dominion of Vrakkoth", "Vrakkoth", "Militaristic");
-        state.factions["merchants"] = this.rollFactionStats("The Golden Ledger", "Aldenmere", "Greedy");
-        // Added: Characters and multiple systems reference "villagers" as a factionId.
-        // This ensures modFactionStat("villagers", ...) is never a silent no-op.
-        state.factions["villagers"] = this.rollFactionStats("The Free Peasantry", "Aldenmere", "Humble");
-        state.factions["bandits"] = this.rollFactionStats("The Ashen Wolves", "Wildlands", "Rebellious");
 
-        const clampStat = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
-        const gameplayFactions = ["merchants", "bandits", "villagers"];
-        for (const fid of gameplayFactions) {
+        state.factions.caelmont = this.rollFactionStats("Royal House Caelmont", "Aldenmere", "Stable");
+        state.factions.valemont = this.rollFactionStats("House Valemont", "Aldenmere", "Ambitious");
+        state.factions.merchants = this.rollFactionStats("The Golden Ledger", "Aldenmere", "Greedy");
+        state.factions.villagers = this.rollFactionStats("The Free Peasantry", "Aldenmere", "Humble");
+        state.factions.bandits = this.rollFactionStats("The Ashen Wolves", "Wildlands", "Rebellious");
+
+        for (const fid of Object.keys(state.factions)) {
             const f = state.factions[fid];
-            if (!f) continue;
-            f.military = clampStat(f.military, 40, 60);
-            f.wealth = clampStat(f.wealth, 40, 60);
-            f.military += (50 - f.military) * 0.05;
-            f.wealth += (50 - f.wealth) * 0.05;
-            f.military = Math.round(f.military);
-            f.wealth = Math.round(f.wealth);
+            if (f) {
+                f.hostileToPlayer = false;
+                f.leaderId = null;
+                f.crisisTraits = [];
+            }
         }
 
-        // Now that the factions are generated, calculate the starting global values
         this.recalculateGlobalMilitary();
     };
 
-    EmergentManager.rollFactionStats = function(name, realm, baseTrait) {
-        // Math.randomInt(max) generates a number between 0 and max-1
-        // We add a baseline value so no faction starts completely at 0
+    /**
+     * After generateCentralCrisis(), assign each faction 1–2 crisis-reactive traits.
+     */
+    EmergentManager.assignCrisisTraitsToFactions = function() {
+        if (!window.EMERGENT_WORLD_BOOTSTRAPPING) {
+            console.warn("[Factions] assignCrisisTraitsToFactions only runs during bootstrap.");
+            return;
+        }
+        const crisis = typeof this.getCurrentCrisis === "function" ? this.getCurrentCrisis() : null;
+        const cid = crisis ? crisis.id : "CIVIL_WAR";
+        const pool = CRISIS_TRAIT_POOLS[cid] || CRISIS_TRAIT_POOLS.CIVIL_WAR;
+        const state = $gameSystem.emergentState();
+
+        for (const factionId of Object.keys(pool)) {
+            const faction = state.factions[factionId];
+            if (!faction) continue;
+            const options = pool[factionId];
+            const t1 = options[Math.randomInt(options.length)];
+            let t2 = options[Math.randomInt(options.length)];
+            if (t2 === t1 && options.length > 1) {
+                t2 = options.find(t => t !== t1) || t1;
+            }
+            faction.crisisTraits = t1 === t2 ? [t1] : [t1, t2];
+        }
+
+        this.logEvent("faction_crisis_traits_assigned", { crisisId: cid });
+    };
+
+    EmergentManager.rollFactionStats = function(name, realm, legacyTrait) {
         return {
             name: name,
             realm: realm,
-            power: 30 + Math.randomInt(51),     // Range: 30 to 80
-            wealth: 20 + Math.randomInt(61),    // Range: 20 to 80
-            military: 10 + Math.randomInt(71),  // Range: 10 to 80
-            loyalty: 20 + Math.randomInt(81),   // Range: 20 to 100
-            ambition: 10 + Math.randomInt(71),  // Range: 10 to 80
-            traits: [baseTrait] // Base cultural trait is static, others evolve
+            power: 40 + Math.randomInt(31),
+            wealth: 40 + Math.randomInt(31),
+            military: 40 + Math.randomInt(31),
+            loyalty: 40 + Math.randomInt(31),
+            ambition: 40 + Math.randomInt(31),
+            traits: [legacyTrait],
+            crisisTraits: [],
+            leaderId: null,
+            hostileToPlayer: false
         };
     };
 
-    //=============================================================================
-    // 4. API & Simulation Logic
-    //=============================================================================
     EmergentManager.getFaction = function(factionId) {
         return $gameSystem.emergentState().factions[factionId];
     };
@@ -103,62 +142,48 @@ Imported.EmergentWorld_Factions = true;
     EmergentManager.recalculateGlobalMilitary = function() {
         const caelmont = this.getFaction("caelmont");
         const valemont = this.getFaction("valemont");
-        
         if (!caelmont || !valemont) return;
-
-        let totalStrength = 0;
+        let totalStrength = caelmont.military;
         if (!valemont.traits.includes("Rebellious")) {
             totalStrength += valemont.military;
         }
-        totalStrength += caelmont.military;
-        
         this.setVar("militaryStrength", totalStrength);
     };
 
-    //=============================================================================
-    // 5. The Dynamic Tick
-    //=============================================================================
-    EmergentManager.registerTickHandler("factions", 10, function(state) {
-        const merchants = this.getFaction("merchants");
-        const bandits = this.getFaction("bandits");
-
-        if (!merchants || !bandits) return; // Safety check
-
-        const simTick = Number(state && state.ticks) || 0;
-        const earlyGame = simTick < 8;
-
-        // Natural simulation growth rules based on RNG starting stats
-        if (bandits.military < merchants.military) {
-            this.modVar("foodSupply", 5);
-            this.modVar("prosperity", 2);
-            this.modFactionStat("merchants", "wealth", 5);
-        } else {
-            // Bandits are stronger! They drain the town and grow their power.
-            this.modVar("prosperity", -2);
-            this.modVar("foodSupply", -2);
-            const bp = earlyGame ? 2 : 4;
-            const bm = earlyGame ? 1 : 2;
-            this.modVar("banditPower", bp);
-            this.modFactionStat("bandits", "military", bm);
+    /**
+     * Structured AI decision for one narrative beat.
+     * @returns {{ type: string, target: string, intensity: number }}
+     */
+    EmergentManager.decideLeaderAction = function(leader, crisis) {
+        if (!leader) {
+            return { type: "HOLD", target: "none", intensity: 0 };
         }
+        const tension = typeof this.getWorldTension === "function" ? this.getWorldTension() : 0;
+        const trait = String(leader.trait || "OPPORTUNIST");
+        const cid = crisis && crisis.id ? crisis.id : "CIVIL_WAR";
+        const stance = String(leader.stanceOnCrisis || "UNDECIDED");
 
-        const driftTowardNeutral = (fid) => {
-            const f = this.getFaction(fid);
-            if (!f) return;
-            if (f.military !== undefined) {
-                f.military = Math.round(Math.max(0, f.military + (50 - f.military) * 0.05));
-            }
-            if (f.wealth !== undefined) {
-                f.wealth = Math.round(Math.max(0, f.wealth + (50 - f.wealth) * 0.05));
-            }
-        };
-        driftTowardNeutral("merchants");
-        driftTowardNeutral("bandits");
-        driftTowardNeutral("villagers");
-
-        this.logEvent("faction_tick_summary", {
-            merchantsWealth: merchants.wealth,
-            banditsMilitary: bandits.military
-        });
-    });
+        if (stance === "WITHDRAW" || trait === "ISOLATIONIST") {
+            return { type: "MILITARY_WITHDRAWAL", target: "interior_lines", intensity: 4 };
+        }
+        if (trait === "FEARFUL" && tension >= 45) {
+            return { type: "COWARDICE", target: "civilian_evacuation", intensity: 6 };
+        }
+        if (cid === "ELEMENTAL_RIFTS" && trait === "PURIST") {
+            return { type: "INQUISITION", target: "arcane_sources", intensity: 7 + Math.randomInt(3) };
+        }
+        if (cid === "UNDEAD_PLAGUE" && (trait === "ZEALOT" || trait === "STEADFAST")) {
+            return { type: "CRUSADE", target: "undead_front", intensity: 6 + Math.randomInt(4) };
+        }
+        if (trait === "OPPORTUNIST" || trait === "AMBITIOUS" || trait === "PREDATOR") {
+            return { type: "EXPLOIT_CRISIS", target: "rival_factions", intensity: 5 + Math.randomInt(4) };
+        }
+        if (cid === "CIVIL_WAR" && leader.factionId === "valemont") {
+            return { type: "COUP_PRESSURE", target: "caelmont", intensity: 7 };
+        }
+        if (tension > 70) {
+            return { type: "DESPERATE_MEASURES", target: "threshold", intensity: 8 };
+        }
+        return { type: "RITUAL", target: "stability_rite", intensity: 3 + Math.randomInt(3) };
+    };
 })();

@@ -1,31 +1,24 @@
 /*:
  * @target MZ
- * @plugindesc [v1.0] Layer 4 - Quest Generator
+ * @plugindesc [v2.0] Quest hooks (leader-based givers; no auto tick)
  * @author dijOTTER
  * @base EmergentWorld_Core
  * @base EmergentWorld_Characters
  *
- * @help EmergentWorld_Quests.js
- * * Scans the world state for problems and generates dynamic quests.
- *
- * Script Calls for Events:
- * EmergentManager.getAvailableQuests() -> Returns array of active quests
- * EmergentManager.completeQuest(questId) -> Marks a quest complete and gives rewards
+ * @help emergentWorld_Quests.js
+ * Quests are created from script or common events — not from passive world ticks.
  */
 
 var Imported = Imported || {};
 Imported.EmergentWorld_Quests = true;
 
 (() => {
-    //=============================================================================
-    // Initialization
-    //=============================================================================
     const _Game_System_initialize = Game_System.prototype.initialize;
     Game_System.prototype.initialize = function() {
         _Game_System_initialize.call(this);
         if (!this._emergentState) this._emergentState = {};
-        this._emergentState.quests = [];
-        this._emergentState.questIdCounter = 0;
+        if (!Array.isArray(this._emergentState.quests)) this._emergentState.quests = [];
+        if (this._emergentState.questIdCounter === undefined) this._emergentState.questIdCounter = 0;
     };
 
     const ensureQuestState = () => {
@@ -37,19 +30,16 @@ Imported.EmergentWorld_Quests = true;
         return state;
     };
 
-    //=============================================================================
-    // Quest API
-    //=============================================================================
     EmergentManager.generateQuest = function(templateId, problemLevel) {
         const state = ensureQuestState();
-        
-        const existingQuest = state.quests.find(q => q.template === templateId && q.status === 'active');
+
+        const existingQuest = state.quests.find(q => q.template === templateId && q.status === "active");
         if (existingQuest) return null;
 
-        let quest = {
+        const quest = {
             id: state.questIdCounter++,
             template: templateId,
-            status: 'active',
+            status: "active",
             title: "Unknown Quest",
             description: "",
             giverName: "Unknown",
@@ -57,30 +47,23 @@ Imported.EmergentWorld_Quests = true;
         };
 
         if (templateId === "bandit_bounty") {
-            const merchants = this.getCharactersByFaction("merchants");
-            if (merchants.length === 0) return null; 
-            
-            const giver = merchants[Math.randomInt(merchants.length)];
+            const pool = this.getLeadersByFaction ? this.getLeadersByFaction("merchants") : [];
+            if (pool.length === 0) return null;
+            const giver = pool[Math.randomInt(pool.length)];
             quest.giverName = giver.name;
             quest.title = "Bounty: Cull the Bandits";
             quest.description = `${giver.name} is willing to pay you to reduce the bandit threat.`;
-            quest.rewardGold = 100 + (problemLevel * 2); 
-            
-            // UI INTEGRATION: Flag Switch 15 so CE 10 knows to push the CGMZ notification
-            $gameSwitches.setValue(15, true); 
-            
+            quest.rewardGold = 100 + (Number(problemLevel) || 0) * 2;
+            if ($gameSwitches) $gameSwitches.setValue(15, true);
         } else if (templateId === "gather_rations") {
-            const villagers = this.getCharactersByFaction("villagers");
-            if (villagers.length === 0) return null;
-            
-            const giver = villagers[Math.randomInt(villagers.length)];
+            const pool = this.getLeadersByFaction ? this.getLeadersByFaction("villagers") : [];
+            if (pool.length === 0) return null;
+            const giver = pool[Math.randomInt(pool.length)];
             quest.giverName = giver.name;
             quest.title = "Emergency Rations";
             quest.description = `The village is starving. ${giver.name} needs you to gather food.`;
             quest.rewardGold = 50;
-            
-            // UI INTEGRATION: Flag Switch 16 so CE 10 knows to push the CGMZ notification
-            $gameSwitches.setValue(16, true); 
+            if ($gameSwitches) $gameSwitches.setValue(16, true);
         }
 
         state.quests.push(quest);
@@ -96,15 +79,15 @@ Imported.EmergentWorld_Quests = true;
     };
 
     EmergentManager.getAvailableQuests = function() {
-        return ensureQuestState().quests.filter(q => q.status === 'active');
+        return ensureQuestState().quests.filter(q => q.status === "active");
     };
 
     EmergentManager.completeQuest = function(questId) {
         const state = ensureQuestState();
         const quest = state.quests.find(q => q.id === questId);
-        
-        if (quest && quest.status === 'active') {
-            quest.status = 'completed';
+
+        if (quest && quest.status === "active") {
+            quest.status = "completed";
             $gameParty.gainGold(quest.rewardGold);
             this.logEvent("quest_completed", {
                 questId: quest.id,
@@ -112,30 +95,15 @@ Imported.EmergentWorld_Quests = true;
                 title: quest.title,
                 rewardGold: quest.rewardGold
             });
-            
+
             if (quest.template === "bandit_bounty") {
                 this.modVar("banditPower", -20);
                 this.modVar("prosperity", 5);
                 this.modFactionStat("bandits", "military", -15);
             } else if (quest.template === "gather_rations") {
                 this.modVar("foodSupply", 30);
-                this.modFactionStat("villagers", "wealth", -10); 
+                this.modFactionStat("villagers", "wealth", -10);
             }
         }
     };
-
-    //=============================================================================
-    // Detector Hook 
-    //=============================================================================
-    EmergentManager.registerTickHandler("quests", 30, function(state) {
-        const banditPower = this.getVar("banditPower");
-        if (banditPower > 40) {
-            this.generateQuest("bandit_bounty", banditPower);
-        }
-
-        const foodSupply = this.getVar("foodSupply");
-        if (foodSupply < 30) {
-            this.generateQuest("gather_rations", foodSupply);
-        }
-    });
 })();

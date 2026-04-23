@@ -3,7 +3,7 @@
  * @plugindesc [v1.0] Layer 6 - Location & Object Generator
  * @author Emergent Story System
  * @base EmergentWorld_Core
- * @base EmergentWorld_Quest
+ * @base EmergentWorld_Quests
  *
  * @help EmergentWorld_Locations.js
  * * Assigns physical locations to generated quests and tracks 
@@ -61,6 +61,9 @@ Imported.EmergentWorld_Locations = true;
         if (quest) {
             quest.objectiveMet = true;
             console.log(`[Locations] Objective complete for: ${quest.title}.`);
+            if (window.EmergentManager && typeof EmergentManager.advanceNarrativeTurn === "function") {
+                EmergentManager.advanceNarrativeTurn("dungeon_cleared");
+            }
 
             if ($gameMessage) {
                 if (!$gameMessage.isBusy()) {
