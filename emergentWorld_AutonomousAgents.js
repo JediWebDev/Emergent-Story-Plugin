@@ -143,7 +143,18 @@ Imported.EmergentWorld_AutonomousAgents = true;
     EmergentManager.bootstrapAutonomousNPCsIfReady = function(state) {
         const safeState = state || _ensureState();
         if (!safeState || !window.AutonomousAgent || !window.AgentManager) return;
-        if (safeState._autonomousBootstrapDone) return;
+        if (!window.EMERGENT_WORLD_BOOTSTRAPPING) {
+            console.warn("[WorldBootstrap] Blocked out-of-order initialization call.");
+            return;
+        }
+        if (safeState._agentsBootstrapped) {
+            console.warn("[Agent] Bootstrap already completed — skipping.");
+            return;
+        }
+        if (safeState._autonomousBootstrapDone) {
+            safeState._agentsBootstrapped = true;
+            return;
+        }
 
         const chars = Array.isArray(safeState.characters) ? safeState.characters : [];
         if (chars.length === 0) return;
@@ -160,6 +171,7 @@ Imported.EmergentWorld_AutonomousAgents = true;
         }
         safeState._autonomousInitialized = true;
         safeState._autonomousBootstrapDone = true;
+        safeState._agentsBootstrapped = true;
         console.log("[Agent] Autonomous bootstrap complete. Agents registered:", AgentManager.agents.length);
     };
 
@@ -179,7 +191,6 @@ Imported.EmergentWorld_AutonomousAgents = true;
             if (character.mode === undefined) character.mode = "REACTIVE";
         }
 
-        this.bootstrapAutonomousNPCsIfReady(safeState);
         this.rebuildAutonomousAgents(safeState);
         if (!this.isAgentSystemEnabled()) return;
         if (!window.AgentManager || typeof AgentManager.update !== "function") return;

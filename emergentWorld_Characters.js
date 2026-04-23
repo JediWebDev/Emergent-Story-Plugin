@@ -119,6 +119,10 @@ const VisualPools = {
 
     // REPLACED: spawnCharacter is now generateCharacter
     EmergentManager.generateCharacter = function(factionId, role) {
+        if (window.EMERGENT_WORLD_INITIALIZED) {
+            console.warn("[Characters] Prevented duplicate generation.");
+            return null;
+        }
         const state = $gameSystem.emergentState();
         
         // Defensive checks to prevent crashes

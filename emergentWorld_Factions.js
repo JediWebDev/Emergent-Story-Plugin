@@ -31,7 +31,8 @@ Imported.EmergentWorld_Factions = true;
             return;
         }
         if (!window.EMERGENT_WORLD_BOOTSTRAPPING) {
-            console.warn("[WorldBootstrap] Subsystem called outside bootstrap phase:", "generateStartingFactions");
+            console.warn("[WorldBootstrap] Blocked out-of-order initialization call.");
+            return;
         }
         const state = $gameSystem.emergentState();
         

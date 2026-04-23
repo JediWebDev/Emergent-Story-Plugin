@@ -61,7 +61,10 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
     window.EmergentWorldBootstrap = window.EmergentWorldBootstrap || {};
 
     window.EmergentWorldBootstrap.run = function(state) {
+        console.log("[WorldBootstrap] RUN CALLED");
+        console.trace();
         if (window.EMERGENT_WORLD_INITIALIZED) {
+            console.warn("[WorldBootstrap] Attempted double initialization — blocked.");
             return;
         }
         if (window.EMERGENT_WORLD_BOOTSTRAPPING) {
@@ -77,6 +80,10 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
         }
         if (!resolvedState) {
             console.error("[WorldBootstrap] Bootstrap failed: no emergent state");
+            return;
+        }
+        if (resolvedState._emergentWorldBootstrapCompleted) {
+            console.warn("[WorldBootstrap] Emergent state already bootstrapped — blocked.");
             return;
         }
 
@@ -118,6 +125,7 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
             }
 
             window.EMERGENT_WORLD_INITIALIZED = true;
+            resolvedState._emergentWorldBootstrapCompleted = true;
 
             const npcLen = Array.isArray(resolvedState.characters) ? resolvedState.characters.length : 0;
             const agentLen = window.AgentManager && Array.isArray(AgentManager.agents)
@@ -135,7 +143,11 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
     };
 
     EmergentManager.bootstrapNewGame = function() {
-        window.EmergentWorldBootstrap.run();
+        if (window.EMERGENT_WORLD_INITIALIZED) {
+            console.warn("[WorldBootstrap] Blocked out-of-order bootstrapNewGame call.");
+            return;
+        }
+        window.EmergentWorldBootstrap.run($gameSystem && $gameSystem._emergentState);
     };
 
     const _DataManager_setupNewGame = DataManager.setupNewGame;
@@ -143,7 +155,8 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
         window.EMERGENT_WORLD_INITIALIZED = false;
         window.EMERGENT_WORLD_BOOTSTRAPPING = false;
         _DataManager_setupNewGame.call(this);
-        window.EmergentWorldBootstrap.run();
+        const emergentState = $gameSystem && $gameSystem._emergentState;
+        window.EmergentWorldBootstrap.run(emergentState);
     };
 
     //=============================================================================
@@ -154,7 +167,8 @@ EmergentManager.MAX_EVENT_LOG_ENTRIES = EmergentManager.MAX_EVENT_LOG_ENTRIES ||
             return;
         }
         if (!window.EMERGENT_WORLD_BOOTSTRAPPING) {
-            console.warn("[WorldBootstrap] Subsystem called outside bootstrap phase:", "generateCoreVariables");
+            console.warn("[WorldBootstrap] Blocked out-of-order initialization call.");
+            return;
         }
         const state = $gameSystem.emergentState();
         if (state._emergentSessionSeed === undefined) {
