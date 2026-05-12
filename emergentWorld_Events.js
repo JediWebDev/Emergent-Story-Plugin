@@ -9,12 +9,36 @@
  * @help emergentWorld_Events.js
  * generateCrisisEvent(leader, action, crisis) produces thematic consequences.
  * Applied from EmergentManager.tickSimulation (narrative turns only).
+ * Consequences target factions by narrativeRole (see EmergentWorld_Factions), not hardcoded ids.
  */
 
 var Imported = Imported || {};
 Imported.EmergentWorld_Events = true;
 
 (() => {
+    function resolveRole(em, role) {
+        if (!em || typeof em.resolveFactionIdForNarrativeRole !== "function") return null;
+        return em.resolveFactionIdForNarrativeRole(role);
+    }
+
+    function addFactionPack(em, factionDeltas, role, pack) {
+        const fid = resolveRole(em, role);
+        if (!fid || !pack) return;
+        const prev = factionDeltas[fid] || {};
+        const merged = Object.assign({}, prev);
+        for (const k of Object.keys(pack)) {
+            merged[k] = (Number(merged[k]) || 0) + (Number(pack[k]) || 0);
+        }
+        factionDeltas[fid] = merged;
+    }
+
+    function pushRoleRelation(em, list, fromRole, toRole, delta, symmetric) {
+        const a = resolveRole(em, fromRole);
+        const b = resolveRole(em, toRole);
+        if (!a || !b) return;
+        list.push({ from: a, to: b, delta: delta, symmetric: !!symmetric });
+    }
+
     /**
      * Build a narrative event from a leader action + active crisis.
      * @param {object} leader
@@ -23,6 +47,7 @@ Imported.EmergentWorld_Events = true;
      */
     EmergentManager.generateCrisisEvent = function(leader, action, crisis) {
         if (!leader || !action) return null;
+        const em = this;
         const cid = crisis && crisis.id ? crisis.id : "CIVIL_WAR";
         const at = String(action.type || "HOLD");
         const trait = String(leader.trait || "");
@@ -34,34 +59,38 @@ Imported.EmergentWorld_Events = true;
         const factionDeltas = {};
         const interFactionAdjustments = [];
 
-        // --- Thematic bundles (cause → effect for logging) ---
+        // --- Thematic bundles (roles → resolved faction ids in applyCrisisEvent) ---
         if (cid === "UNDEAD_PLAGUE" && at === "COWARDICE") {
             title = "Villages Abandoned";
             summary = "Panic spreads; the undead claim more ground.";
             tensionDelta = 6;
             relationshipDelta = -4;
-            factionDeltas.church = { military: -3, power: -2 };
-            factionDeltas.redbane = { military: 2 };
-            interFactionAdjustments.push({ from: "church", to: "redbane", delta: -5, symmetric: true });
+            addFactionPack(em, factionDeltas, "ECCLESIASTICAL", { military: -3, power: -2 });
+            addFactionPack(em, factionDeltas, "MERCENARY", { military: 2 });
+            pushRoleRelation(em, interFactionAdjustments, "ECCLESIASTICAL", "MERCENARY", -5, true);
         } else if (cid === "ELEMENTAL_RIFTS" && at === "INQUISITION") {
             title = "The Inquisition";
             summary = "Magic is banned; mages and allies are hunted.";
             tensionDelta = 5;
             relationshipDelta = trait === "PURIST" ? -10 : -6;
-            factionDeltas.mage_guild = { wealth: -5 };
-            factionDeltas.church = { military: 2 };
-            interFactionAdjustments.push({ from: "church", to: "mage_guild", delta: -12, symmetric: true });
+            addFactionPack(em, factionDeltas, "ARCANE", { wealth: -5 });
+            addFactionPack(em, factionDeltas, "ECCLESIASTICAL", { military: 2 });
+            pushRoleRelation(em, interFactionAdjustments, "ECCLESIASTICAL", "ARCANE", -12, true);
         } else if (cid === "CIVIL_WAR" && at === "COUP_PRESSURE") {
             title = "Succession Ultimatum";
             summary = "Rebel houses demand the crown; loyalists mobilize.";
             tensionDelta = 7;
             relationshipDelta = -3;
-            factionDeltas.langford = { military: 3 };
-            factionDeltas.blackwood = { military: 3 };
-            interFactionAdjustments.push(
-                { from: "blackwood", to: "langford", delta: -10, symmetric: false },
-                { from: "langford", to: "blackwood", delta: -10, symmetric: false }
-            );
+            addFactionPack(em, factionDeltas, "CROWN", { military: 3 });
+            addFactionPack(em, factionDeltas, "REBEL_HOUSE", { military: 3 });
+            const crownId = resolveRole(em, "CROWN");
+            const rebelId = resolveRole(em, "REBEL_HOUSE");
+            if (rebelId && crownId) {
+                interFactionAdjustments.push(
+                    { from: rebelId, to: crownId, delta: -10, symmetric: false },
+                    { from: crownId, to: rebelId, delta: -10, symmetric: false }
+                );
+            }
         } else if (at === "MILITARY_WITHDRAWAL") {
             title = "Defensive pullback";
             summary = "Forces consolidate; the crisis fills the vacuum.";
@@ -74,7 +103,7 @@ Imported.EmergentWorld_Events = true;
             tensionDelta = 2;
             relationshipDelta = -5;
             factionDeltas[leader.factionId] = { wealth: 6, power: 4 };
-            factionDeltas.church = { wealth: -4 };
+            addFactionPack(em, factionDeltas, "ECCLESIASTICAL", { wealth: -4 });
             if (typeof EmergentManager.getPrimaryRivalFaction === "function") {
                 const rival = EmergentManager.getPrimaryRivalFaction(leader.factionId);
                 if (rival) {
@@ -92,8 +121,8 @@ Imported.EmergentWorld_Events = true;
             tensionDelta = -4;
             relationshipDelta = 4;
             factionDeltas[leader.factionId] = { military: -4, power: 2 };
-            factionDeltas.redbane = { military: -2 };
-            interFactionAdjustments.push({ from: "langford", to: "church", delta: 3, symmetric: true });
+            addFactionPack(em, factionDeltas, "MERCENARY", { military: -2 });
+            pushRoleRelation(em, interFactionAdjustments, "CROWN", "ECCLESIASTICAL", 3, true);
         } else if (at === "DESPERATE_MEASURES") {
             title = "Threshold breach";
             summary = "Extreme orders ripple across the realm.";

@@ -13,15 +13,15 @@ var Imported = Imported || {};
 Imported.EmergentWorld_Characters = true;
 
 (() => {
-    /** Factions that receive a named leader in the vertical slice (4–6 total). */
-    const LEADER_FACTION_ORDER = ["langford", "blackwood", "redbane", "church", "mage_guild"];
+    /** One leader per narrative role (resolved to faction ids at bootstrap). */
+    const LEADER_NARRATIVE_ROLE_ORDER = ["CROWN", "REBEL_HOUSE", "MERCENARY", "ECCLESIASTICAL", "ARCANE"];
 
-    const LEADER_NAMES = {
-        langford: "High Steward Elena Langford",
-        blackwood: "Lord Varick Blackwood",
-        redbane: "Warlord Isa Redbane",
-        church: "Archconfessor Marius Kell",
-        mage_guild: "Provost Nimirael Ash"
+    const LEADER_NAMES_BY_ROLE = {
+        CROWN: "High Steward Elena Langford",
+        REBEL_HOUSE: "Lord Varick Blackwood",
+        MERCENARY: "Warlord Isa Redbane",
+        ECCLESIASTICAL: "Archconfessor Marius Kell",
+        ARCANE: "Provost Nimirael Ash"
     };
 
     const _Game_System_initialize = Game_System.prototype.initialize;
@@ -42,13 +42,25 @@ Imported.EmergentWorld_Characters = true;
         mage_guild: 65
     };
 
+    /** When faction ids are renamed (e.g. MZ database keys), map narrativeRole to switches. */
+    EmergentManager.FACTION_HOSTILITY_SWITCH_IDS_BY_ROLE = {
+        CROWN: 61,
+        REBEL_HOUSE: 62,
+        MERCENARY: 63,
+        ECCLESIASTICAL: 64,
+        ARCANE: 65
+    };
+
     EmergentManager.refreshFactionHostilitySwitches = function() {
         const state = $gameSystem.emergentState();
         const factions = state.factions || {};
         for (const fid of Object.keys(factions)) {
-            const sw = this.FACTION_HOSTILITY_SWITCH_IDS[fid];
-            if (sw == null) continue;
             const f = factions[fid];
+            let sw = this.FACTION_HOSTILITY_SWITCH_IDS[fid];
+            if (sw == null && f && f.narrativeRole && this.FACTION_HOSTILITY_SWITCH_IDS_BY_ROLE) {
+                sw = this.FACTION_HOSTILITY_SWITCH_IDS_BY_ROLE[f.narrativeRole];
+            }
+            if (sw == null) continue;
             const hostile = !!(f && f.hostileToPlayer);
             if ($gameSwitches) $gameSwitches.setValue(sw, hostile);
         }
@@ -65,7 +77,12 @@ Imported.EmergentWorld_Characters = true;
         const crisisId = crisis ? crisis.id : "CIVIL_WAR";
 
         state.leaders = [];
-        for (const factionId of LEADER_FACTION_ORDER) {
+        for (const narrativeRole of LEADER_NARRATIVE_ROLE_ORDER) {
+            const factionId =
+                typeof this.resolveFactionIdForNarrativeRole === "function"
+                    ? this.resolveFactionIdForNarrativeRole(narrativeRole)
+                    : null;
+            if (!factionId) continue;
             const faction = this.getFaction(factionId);
             if (!faction) continue;
 
@@ -74,7 +91,7 @@ Imported.EmergentWorld_Characters = true;
 
             const leader = {
                 id: `leader_${factionId}`,
-                name: LEADER_NAMES[factionId] || `Leader of ${factionId}`,
+                name: LEADER_NAMES_BY_ROLE[narrativeRole] || `Leader of ${factionId}`,
                 factionId: factionId,
                 trait: primaryTrait,
                 relationshipToPlayer: 0,

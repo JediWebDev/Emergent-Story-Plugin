@@ -3,6 +3,7 @@
  * @plugindesc [v2.0] Quest hooks (leader-based givers; no auto tick)
  * @author dijOTTER
  * @base EmergentWorld_Core
+ * @base EmergentWorld_Factions
  * @base EmergentWorld_Characters
  *
  * @help emergentWorld_Quests.js
@@ -47,7 +48,11 @@ Imported.EmergentWorld_Quests = true;
         };
 
         if (templateId === "bandit_bounty") {
-            const pool = this.getLeadersByFaction ? this.getLeadersByFaction("langford") : [];
+            const crownFid =
+                typeof this.resolveFactionIdForNarrativeRole === "function"
+                    ? this.resolveFactionIdForNarrativeRole("CROWN")
+                    : "langford";
+            const pool = crownFid && this.getLeadersByFaction ? this.getLeadersByFaction(crownFid) : [];
             if (pool.length === 0) return null;
             const giver = pool[Math.randomInt(pool.length)];
             quest.giverName = giver.name;
@@ -56,7 +61,11 @@ Imported.EmergentWorld_Quests = true;
             quest.rewardGold = 100 + (Number(problemLevel) || 0) * 2;
             if ($gameSwitches) $gameSwitches.setValue(15, true);
         } else if (templateId === "gather_rations") {
-            const pool = this.getLeadersByFaction ? this.getLeadersByFaction("church") : [];
+            const faithFid =
+                typeof this.resolveFactionIdForNarrativeRole === "function"
+                    ? this.resolveFactionIdForNarrativeRole("ECCLESIASTICAL")
+                    : "church";
+            const pool = faithFid && this.getLeadersByFaction ? this.getLeadersByFaction(faithFid) : [];
             if (pool.length === 0) return null;
             const giver = pool[Math.randomInt(pool.length)];
             quest.giverName = giver.name;
@@ -99,10 +108,18 @@ Imported.EmergentWorld_Quests = true;
             if (quest.template === "bandit_bounty") {
                 this.modVar("banditPower", -20);
                 this.modVar("prosperity", 5);
-                this.modFactionStat("redbane", "military", -15);
+                const mercFid =
+                    typeof this.resolveFactionIdForNarrativeRole === "function"
+                        ? this.resolveFactionIdForNarrativeRole("MERCENARY")
+                        : "redbane";
+                if (mercFid) this.modFactionStat(mercFid, "military", -15);
             } else if (quest.template === "gather_rations") {
                 this.modVar("foodSupply", 30);
-                this.modFactionStat("church", "wealth", -10);
+                const faithFid =
+                    typeof this.resolveFactionIdForNarrativeRole === "function"
+                        ? this.resolveFactionIdForNarrativeRole("ECCLESIASTICAL")
+                        : "church";
+                if (faithFid) this.modFactionStat(faithFid, "wealth", -10);
             }
         }
     };
