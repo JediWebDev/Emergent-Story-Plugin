@@ -7,6 +7,53 @@
  * @base EmergentWorld_Characters
  * @base EmergentWorld_CrisisGen
  *
+ * @help Player traits (Phase 3): set plugin parameters for variable IDs, or use Actor mode
+ * with note tags on the actor row, e.g. <Persuasion: 4> <Negotiation: 6> <Ruthless: 2>.
+ * Then use plugin commands Check Player Trait / Export Player Trait, or script:
+ * EmergentManager.getPlayerTraitValue("persuasion"), EmergentManager.comparePlayerTrait(...).
+ *
+ * @param emergent_trait_source
+ * @text Player trait source
+ * @desc Variables: read game variable IDs below. Actor notes: parse tags on the chosen actor row.
+ * @type select
+ * @option Game variables
+ * @value variables
+ * @option Actor database (note tags)
+ * @value actorNote
+ * @default variables
+ *
+ * @param emergent_persuasion_var
+ * @text Persuasion — variable ID
+ * @desc Game variable holding the party/hero Persuasion score (when source is Game variables). 0 = unused.
+ * @type variable
+ * @default 0
+ *
+ * @param emergent_negotiation_var
+ * @text Negotiation — variable ID
+ * @type variable
+ * @default 0
+ *
+ * @param emergent_ruthless_var
+ * @text Ruthless — variable ID
+ * @type variable
+ * @default 0
+ *
+ * @param emergent_trait_actor_mode
+ * @text Actor note — which actor row
+ * @desc When source is Actor notes: use party leader's actor data, or a fixed database ID.
+ * @type select
+ * @option Party leader
+ * @value leader
+ * @option Fixed actor ID
+ * @value fixed
+ * @default leader
+ *
+ * @param emergent_trait_actor_id
+ * @text Actor note — fixed actor ID
+ * @desc Database Actor ID when mode is Fixed (ignored for Party leader).
+ * @type actor
+ * @default 1
+ *
  * @command CheckFactionTrait
  * @text Check Faction Trait
  * @desc Turns a switch ON if a faction has a specific trait (legacy traits or crisisTraits).
@@ -191,10 +238,134 @@
  * @text Apply same delta B→A
  * @type boolean
  * @default false
+ *
+ * @command CheckPlayerTrait
+ * @text Check Player Trait
+ * @desc Turns a switch ON if Persuasion / Negotiation / Ruthless compares to the threshold (dialogue gating).
+ *
+ * @arg trait
+ * @text Trait
+ * @type select
+ * @option Persuasion
+ * @value persuasion
+ * @option Negotiation
+ * @value negotiation
+ * @option Ruthless
+ * @value ruthless
+ * @default persuasion
+ *
+ * @arg comparison
+ * @text Comparison
+ * @type select
+ * @option >= (at least)
+ * @value >=
+ * @option > (greater than)
+ * @value >
+ * @option <= (at most)
+ * @value <=
+ * @option < (less than)
+ * @value <
+ * @option == (equal)
+ * @value ==
+ * @default >=
+ *
+ * @arg threshold
+ * @text Threshold
+ * @type number
+ * @default 5
+ *
+ * @arg switchId
+ * @text Switch
+ * @type switch
+ *
+ * @command ExportPlayerTrait
+ * @text Export Player Trait
+ * @desc Writes the current Persuasion, Negotiation, or Ruthless value to a variable.
+ *
+ * @arg trait
+ * @text Trait
+ * @type select
+ * @option Persuasion
+ * @value persuasion
+ * @option Negotiation
+ * @value negotiation
+ * @option Ruthless
+ * @value ruthless
+ * @default persuasion
+ *
+ * @arg variableId
+ * @text Variable
+ * @type variable
+ * @default 50
  */
 
 (() => {
     const pluginName = "emergentWorld_MZIntegration";
+    const parameters = PluginManager.parameters(pluginName);
+
+    const TRAIT_VAR_KEYS = {
+        persuasion: "emergent_persuasion_var",
+        negotiation: "emergent_negotiation_var",
+        ruthless: "emergent_ruthless_var"
+    };
+
+    const NOTE_TAG_NAMES = {
+        persuasion: "Persuasion",
+        negotiation: "Negotiation",
+        ruthless: "Ruthless"
+    };
+
+    function traitSource() {
+        return String(parameters.emergent_trait_source || "variables").toLowerCase();
+    }
+
+    function parseNoteTrait(note, displayName) {
+        if (!note || !displayName) return 0;
+        const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp(`<\\s*${escaped}\\s*:\\s*(-?\\d+)\\s*>`, "i");
+        const m = note.match(re);
+        return m ? Number(m[1]) || 0 : 0;
+    }
+
+    function resolveTraitActorId() {
+        const mode = String(parameters.emergent_trait_actor_mode || "leader").toLowerCase();
+        if (mode === "fixed") {
+            return Number(parameters.emergent_trait_actor_id) || 1;
+        }
+        if ($gameParty && $gameParty.leader && $gameParty.leader()) {
+            return $gameParty.leader().actorId();
+        }
+        return Number(parameters.emergent_trait_actor_id) || 1;
+    }
+
+    EmergentManager.getPlayerTraitValue = function(traitKey) {
+        const key = String(traitKey || "").toLowerCase();
+        const varKey = TRAIT_VAR_KEYS[key];
+        if (!varKey) return 0;
+
+        const src = traitSource();
+        if (src === "actornote" || src === "actor_note") {
+            const actorId = resolveTraitActorId();
+            const data = $dataActors && $dataActors[actorId];
+            const tag = NOTE_TAG_NAMES[key];
+            return data ? parseNoteTrait(data.note, tag) : 0;
+        }
+
+        const varId = Number(parameters[varKey]) || 0;
+        if (!varId || !$gameVariables) return 0;
+        return Number($gameVariables.value(varId)) || 0;
+    };
+
+    EmergentManager.comparePlayerTrait = function(traitKey, threshold, comparison) {
+        const v = this.getPlayerTraitValue(traitKey);
+        const th = Number(threshold) || 0;
+        const cmp = String(comparison || ">=").trim();
+        if (cmp === "<=") return v <= th;
+        if (cmp === "==") return v === th;
+        if (cmp === ">") return v > th;
+        if (cmp === "<") return v < th;
+        return v >= th;
+    };
 
     const _Scene_Map_start = Scene_Map.prototype.start;
     Scene_Map.prototype.start = function() {
@@ -335,5 +506,20 @@
         const amt = Number(args.amount) || 0;
         const sym = args.symmetric === true || String(args.symmetric) === "true";
         EmergentManager.modifyInterFactionStanding(from, to, amt, { symmetric: sym });
+    });
+
+    PluginManager.registerCommand(pluginName, "CheckPlayerTrait", args => {
+        const trait = String(args.trait || "persuasion").toLowerCase();
+        const cmp = args.comparison != null ? String(args.comparison) : ">=";
+        const th = Number(args.threshold) || 0;
+        const sw = Number(args.switchId);
+        const ok = EmergentManager.comparePlayerTrait(trait, th, cmp);
+        $gameSwitches.setValue(sw, ok);
+    });
+
+    PluginManager.registerCommand(pluginName, "ExportPlayerTrait", args => {
+        const trait = String(args.trait || "persuasion").toLowerCase();
+        const v = EmergentManager.getPlayerTraitValue(trait);
+        $gameVariables.setValue(Number(args.variableId), v);
     });
 })();
