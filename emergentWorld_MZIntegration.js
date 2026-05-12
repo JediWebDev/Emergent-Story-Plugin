@@ -3,6 +3,7 @@
  * @plugindesc [v2.0] MZ Integration — crisis, leaders, hostility switches
  * @author dijOTTER
  * @base EmergentWorld_Core
+ * @base EmergentWorld_Factions
  * @base EmergentWorld_Characters
  * @base EmergentWorld_CrisisGen
  *
@@ -124,6 +125,72 @@
  * @type switch
  * @arg switchTurnIn
  * @type switch
+ *
+ * @command ExportInterFactionStanding
+ * @text Export Inter-Faction Standing
+ * @desc Writes how faction A feels toward faction B (-100 hostile … +100 allied) to a variable.
+ *
+ * @arg fromFactionId
+ * @text From Faction ID
+ * @type string
+ * @default church
+ *
+ * @arg toFactionId
+ * @text Toward Faction ID
+ * @type string
+ * @default mage_guild
+ *
+ * @arg variableId
+ * @text Variable
+ * @type variable
+ * @default 40
+ *
+ * @command CheckInterFactionHostile
+ * @text Check Inter-Faction Hostile
+ * @desc Turns a switch ON if A→B standing is at or below the hostility threshold (default -45).
+ *
+ * @arg factionA
+ * @text From Faction ID
+ * @type string
+ * @default church
+ *
+ * @arg factionB
+ * @text Toward Faction ID
+ * @type string
+ * @default mage_guild
+ *
+ * @arg threshold
+ * @text Threshold (optional)
+ * @type number
+ * @default -45
+ *
+ * @arg switchId
+ * @text Switch
+ * @type switch
+ *
+ * @command ModifyInterFactionStanding
+ * @text Modify Inter-Faction Standing
+ * @desc Shifts A→B standing (clamped -100..100). Use symmetric for mutual shifts.
+ *
+ * @arg fromFactionId
+ * @text From Faction ID
+ * @type string
+ * @default church
+ *
+ * @arg toFactionId
+ * @text Toward Faction ID
+ * @type string
+ * @default mage_guild
+ *
+ * @arg amount
+ * @text Delta
+ * @type number
+ * @default -5
+ *
+ * @arg symmetric
+ * @text Apply same delta B→A
+ * @type boolean
+ * @default false
  */
 
 (() => {
@@ -132,6 +199,9 @@
     const _Scene_Map_start = Scene_Map.prototype.start;
     Scene_Map.prototype.start = function() {
         _Scene_Map_start.call(this);
+        if (window.EmergentManager && typeof EmergentManager.ensureFactionRelations === "function") {
+            EmergentManager.ensureFactionRelations();
+        }
         if (window.EmergentManager && typeof EmergentManager.refreshFactionHostilitySwitches === "function") {
             EmergentManager.refreshFactionHostilitySwitches();
         }
@@ -239,5 +309,31 @@
         if (readyQuest) {
             $gameSwitches.setValue(turnInSwitch, true);
         }
+    });
+
+    PluginManager.registerCommand(pluginName, "ExportInterFactionStanding", args => {
+        const from = String(args.fromFactionId || "");
+        const to = String(args.toFactionId || "");
+        const v = EmergentManager.getInterFactionStanding(from, to);
+        $gameVariables.setValue(Number(args.variableId), v);
+    });
+
+    PluginManager.registerCommand(pluginName, "CheckInterFactionHostile", args => {
+        const a = String(args.factionA || "");
+        const b = String(args.factionB || "");
+        const sw = Number(args.switchId);
+        let th = Number(args.threshold);
+        if (!Number.isFinite(th)) {
+            th = EmergentManager.INTER_FACTION_HOSTILE_THRESHOLD;
+        }
+        $gameSwitches.setValue(sw, EmergentManager.isInterFactionHostile(a, b, th));
+    });
+
+    PluginManager.registerCommand(pluginName, "ModifyInterFactionStanding", args => {
+        const from = String(args.fromFactionId || "");
+        const to = String(args.toFactionId || "");
+        const amt = Number(args.amount) || 0;
+        const sym = args.symmetric === true || String(args.symmetric) === "true";
+        EmergentManager.modifyInterFactionStanding(from, to, amt, { symmetric: sym });
     });
 })();

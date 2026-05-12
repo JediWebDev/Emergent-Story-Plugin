@@ -32,6 +32,7 @@ Imported.EmergentWorld_Events = true;
         let tensionDelta = 1 + Math.floor(Number(action.intensity) / 4);
         let relationshipDelta = 0;
         const factionDeltas = {};
+        const interFactionAdjustments = [];
 
         // --- Thematic bundles (cause → effect for logging) ---
         if (cid === "UNDEAD_PLAGUE" && at === "COWARDICE") {
@@ -41,6 +42,7 @@ Imported.EmergentWorld_Events = true;
             relationshipDelta = -4;
             factionDeltas.church = { military: -3, power: -2 };
             factionDeltas.redbane = { military: 2 };
+            interFactionAdjustments.push({ from: "church", to: "redbane", delta: -5, symmetric: true });
         } else if (cid === "ELEMENTAL_RIFTS" && at === "INQUISITION") {
             title = "The Inquisition";
             summary = "Magic is banned; mages and allies are hunted.";
@@ -48,6 +50,7 @@ Imported.EmergentWorld_Events = true;
             relationshipDelta = trait === "PURIST" ? -10 : -6;
             factionDeltas.mage_guild = { wealth: -5 };
             factionDeltas.church = { military: 2 };
+            interFactionAdjustments.push({ from: "church", to: "mage_guild", delta: -12, symmetric: true });
         } else if (cid === "CIVIL_WAR" && at === "COUP_PRESSURE") {
             title = "Succession Ultimatum";
             summary = "Rebel houses demand the crown; loyalists mobilize.";
@@ -55,6 +58,10 @@ Imported.EmergentWorld_Events = true;
             relationshipDelta = -3;
             factionDeltas.langford = { military: 3 };
             factionDeltas.blackwood = { military: 3 };
+            interFactionAdjustments.push(
+                { from: "blackwood", to: "langford", delta: -10, symmetric: false },
+                { from: "langford", to: "blackwood", delta: -10, symmetric: false }
+            );
         } else if (at === "MILITARY_WITHDRAWAL") {
             title = "Defensive pullback";
             summary = "Forces consolidate; the crisis fills the vacuum.";
@@ -68,6 +75,17 @@ Imported.EmergentWorld_Events = true;
             relationshipDelta = -5;
             factionDeltas[leader.factionId] = { wealth: 6, power: 4 };
             factionDeltas.church = { wealth: -4 };
+            if (typeof EmergentManager.getPrimaryRivalFaction === "function") {
+                const rival = EmergentManager.getPrimaryRivalFaction(leader.factionId);
+                if (rival) {
+                    interFactionAdjustments.push({
+                        from: leader.factionId,
+                        to: rival,
+                        delta: -7,
+                        symmetric: true
+                    });
+                }
+            }
         } else if (at === "CRUSADE") {
             title = "Holy strike";
             summary = "A coordinated push against the threat.";
@@ -75,6 +93,7 @@ Imported.EmergentWorld_Events = true;
             relationshipDelta = 4;
             factionDeltas[leader.factionId] = { military: -4, power: 2 };
             factionDeltas.redbane = { military: -2 };
+            interFactionAdjustments.push({ from: "langford", to: "church", delta: 3, symmetric: true });
         } else if (at === "DESPERATE_MEASURES") {
             title = "Threshold breach";
             summary = "Extreme orders ripple across the realm.";
@@ -95,7 +114,8 @@ Imported.EmergentWorld_Events = true;
             actionType: at,
             tensionDelta: tensionDelta,
             relationshipDelta: relationshipDelta,
-            factionDeltas: factionDeltas
+            factionDeltas: factionDeltas,
+            interFactionAdjustments: interFactionAdjustments
         };
     };
 
@@ -114,6 +134,18 @@ Imported.EmergentWorld_Events = true;
         }
         if (leader && event.relationshipDelta !== undefined && event.relationshipDelta !== 0) {
             this.modifyRelationship(leader.id, Number(event.relationshipDelta) || 0);
+        }
+        const ifList = event.interFactionAdjustments;
+        if (Array.isArray(ifList) && typeof this.modifyInterFactionStanding === "function") {
+            for (const adj of ifList) {
+                if (!adj || adj.from == null || adj.to == null) continue;
+                this.modifyInterFactionStanding(
+                    String(adj.from),
+                    String(adj.to),
+                    Number(adj.delta) || 0,
+                    { symmetric: !!adj.symmetric }
+                );
+            }
         }
     };
 })();
