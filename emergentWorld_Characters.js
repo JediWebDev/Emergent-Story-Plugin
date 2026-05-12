@@ -14,14 +14,14 @@ Imported.EmergentWorld_Characters = true;
 
 (() => {
     /** Factions that receive a named leader in the vertical slice (4–6 total). */
-    const LEADER_FACTION_ORDER = ["caelmont", "valemont", "merchants", "villagers", "bandits"];
+    const LEADER_FACTION_ORDER = ["langford", "blackwood", "redbane", "church", "mage_guild"];
 
     const LEADER_NAMES = {
-        caelmont: "Queen Morwen Caelmont",
-        valemont: "Duke Aldric Valemont",
-        merchants: "Guildmaster Seren",
-        villagers: "Elder Bram of Aldenmere",
-        bandits: "Ash Wolf Mara"
+        langford: "High Steward Elena Langford",
+        blackwood: "Lord Varick Blackwood",
+        redbane: "Warlord Isa Redbane",
+        church: "Archconfessor Marius Kell",
+        mage_guild: "Provost Nimirael Ash"
     };
 
     const _Game_System_initialize = Game_System.prototype.initialize;
@@ -35,11 +35,11 @@ Imported.EmergentWorld_Characters = true;
      * Hostility switches (MZ map #) — tune to your project or drive via plugin commands.
      */
     EmergentManager.FACTION_HOSTILITY_SWITCH_IDS = {
-        caelmont: 61,
-        valemont: 62,
-        merchants: 63,
-        villagers: 64,
-        bandits: 65
+        langford: 61,
+        blackwood: 62,
+        redbane: 63,
+        church: 64,
+        mage_guild: 65
     };
 
     EmergentManager.refreshFactionHostilitySwitches = function() {

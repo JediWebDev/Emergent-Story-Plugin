@@ -19,25 +19,25 @@ Imported.EmergentWorld_Factions = true;
      */
     const CRISIS_TRAIT_POOLS = {
         UNDEAD_PLAGUE: {
-            caelmont: ["ZEALOT", "STEADFAST"],
-            valemont: ["OPPORTUNIST", "AMBITIOUS"],
-            merchants: ["OPPORTUNIST", "ISOLATIONIST"],
-            villagers: ["FEARFUL", "ZEALOT"],
-            bandits: ["OPPORTUNIST", "PREDATOR"]
+            langford: ["ZEALOT", "STEADFAST"],
+            blackwood: ["OPPORTUNIST", "AMBITIOUS"],
+            mage_guild: ["OPPORTUNIST", "ISOLATIONIST"],
+            church: ["FEARFUL", "ZEALOT"],
+            redbane: ["OPPORTUNIST", "PREDATOR"]
         },
         ELEMENTAL_RIFTS: {
-            caelmont: ["PURIST", "STEADFAST"],
-            valemont: ["OPPORTUNIST", "PURIST"],
-            merchants: ["OPPORTUNIST", "ISOLATIONIST"],
-            villagers: ["FEARFUL", "ISOLATIONIST"],
-            bandits: ["OPPORTUNIST", "PREDATOR"]
+            langford: ["PURIST", "STEADFAST"],
+            blackwood: ["OPPORTUNIST", "PURIST"],
+            mage_guild: ["OPPORTUNIST", "ISOLATIONIST"],
+            church: ["FEARFUL", "ISOLATIONIST"],
+            redbane: ["OPPORTUNIST", "PREDATOR"]
         },
         CIVIL_WAR: {
-            caelmont: ["STEADFAST", "ZEALOT"],
-            valemont: ["AMBITIOUS", "OPPORTUNIST"],
-            merchants: ["OPPORTUNIST", "ISOLATIONIST"],
-            villagers: ["FEARFUL", "ISOLATIONIST"],
-            bandits: ["OPPORTUNIST", "PREDATOR"]
+            langford: ["STEADFAST", "ZEALOT"],
+            blackwood: ["AMBITIOUS", "OPPORTUNIST"],
+            mage_guild: ["OPPORTUNIST", "ISOLATIONIST"],
+            church: ["FEARFUL", "ISOLATIONIST"],
+            redbane: ["OPPORTUNIST", "PREDATOR"]
         }
     };
 
@@ -58,11 +58,11 @@ Imported.EmergentWorld_Factions = true;
         }
         const state = $gameSystem.emergentState();
 
-        state.factions.caelmont = this.rollFactionStats("Royal House Caelmont", "Aldenmere", "Stable");
-        state.factions.valemont = this.rollFactionStats("House Valemont", "Aldenmere", "Ambitious");
-        state.factions.merchants = this.rollFactionStats("The Golden Ledger", "Aldenmere", "Greedy");
-        state.factions.villagers = this.rollFactionStats("The Free Peasantry", "Aldenmere", "Humble");
-        state.factions.bandits = this.rollFactionStats("The Ashen Wolves", "Wildlands", "Rebellious");
+        state.factions.langford = this.rollFactionStats("House Langford", "Rivermark", "Lawful");
+        state.factions.blackwood = this.rollFactionStats("House Blackwood", "Blackwood Vale", "Ambitious");
+        state.factions.redbane = this.rollFactionStats("The Redbane Freebands", "Bleak Frontier", "Martial");
+        state.factions.church = this.rollFactionStats("The Censured Church", "Rivermark", "Devout");
+        state.factions.mage_guild = this.rollFactionStats("The Argent Collegium", "Mistspire", "Arcane");
 
         for (const fid of Object.keys(state.factions)) {
             const f = state.factions[fid];
@@ -140,12 +140,12 @@ Imported.EmergentWorld_Factions = true;
     };
 
     EmergentManager.recalculateGlobalMilitary = function() {
-        const caelmont = this.getFaction("caelmont");
-        const valemont = this.getFaction("valemont");
-        if (!caelmont || !valemont) return;
-        let totalStrength = caelmont.military;
-        if (!valemont.traits.includes("Rebellious")) {
-            totalStrength += valemont.military;
+        const langford = this.getFaction("langford");
+        const blackwood = this.getFaction("blackwood");
+        if (!langford || !blackwood) return;
+        let totalStrength = langford.military;
+        if (!blackwood.traits.includes("Rebellious")) {
+            totalStrength += blackwood.military;
         }
         this.setVar("militaryStrength", totalStrength);
     };
@@ -178,8 +178,8 @@ Imported.EmergentWorld_Factions = true;
         if (trait === "OPPORTUNIST" || trait === "AMBITIOUS" || trait === "PREDATOR") {
             return { type: "EXPLOIT_CRISIS", target: "rival_factions", intensity: 5 + Math.randomInt(4) };
         }
-        if (cid === "CIVIL_WAR" && leader.factionId === "valemont") {
-            return { type: "COUP_PRESSURE", target: "caelmont", intensity: 7 };
+        if (cid === "CIVIL_WAR" && leader.factionId === "blackwood") {
+            return { type: "COUP_PRESSURE", target: "langford", intensity: 7 };
         }
         if (tension > 70) {
             return { type: "DESPERATE_MEASURES", target: "threshold", intensity: 8 };

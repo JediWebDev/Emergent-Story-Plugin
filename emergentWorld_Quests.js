@@ -47,21 +47,21 @@ Imported.EmergentWorld_Quests = true;
         };
 
         if (templateId === "bandit_bounty") {
-            const pool = this.getLeadersByFaction ? this.getLeadersByFaction("merchants") : [];
+            const pool = this.getLeadersByFaction ? this.getLeadersByFaction("langford") : [];
             if (pool.length === 0) return null;
             const giver = pool[Math.randomInt(pool.length)];
             quest.giverName = giver.name;
-            quest.title = "Bounty: Cull the Bandits";
-            quest.description = `${giver.name} is willing to pay you to reduce the bandit threat.`;
+            quest.title = "Bounty: Frontier Marauders";
+            quest.description = `${giver.name} posts coin to blunt Redbane raids along the marches.`;
             quest.rewardGold = 100 + (Number(problemLevel) || 0) * 2;
             if ($gameSwitches) $gameSwitches.setValue(15, true);
         } else if (templateId === "gather_rations") {
-            const pool = this.getLeadersByFaction ? this.getLeadersByFaction("villagers") : [];
+            const pool = this.getLeadersByFaction ? this.getLeadersByFaction("church") : [];
             if (pool.length === 0) return null;
             const giver = pool[Math.randomInt(pool.length)];
             quest.giverName = giver.name;
             quest.title = "Emergency Rations";
-            quest.description = `The village is starving. ${giver.name} needs you to gather food.`;
+            quest.description = `Church granaries are empty. ${giver.name} needs you to gather food.`;
             quest.rewardGold = 50;
             if ($gameSwitches) $gameSwitches.setValue(16, true);
         }
@@ -99,10 +99,10 @@ Imported.EmergentWorld_Quests = true;
             if (quest.template === "bandit_bounty") {
                 this.modVar("banditPower", -20);
                 this.modVar("prosperity", 5);
-                this.modFactionStat("bandits", "military", -15);
+                this.modFactionStat("redbane", "military", -15);
             } else if (quest.template === "gather_rations") {
                 this.modVar("foodSupply", 30);
-                this.modFactionStat("villagers", "wealth", -10);
+                this.modFactionStat("church", "wealth", -10);
             }
         }
     };

@@ -13,7 +13,7 @@
  * @arg factionId
  * @text Faction ID
  * @type string
- * @default merchants
+ * @default mage_guild
  *
  * @arg trait
  * @text Trait to Check
@@ -55,7 +55,7 @@
  *
  * @arg leaderId
  * @type string
- * @default leader_merchants
+ * @default leader_mage_guild
  *
  * @arg varName
  * @type variable
@@ -79,7 +79,7 @@
  *
  * @arg leaderId
  * @type string
- * @default leader_merchants
+ * @default leader_mage_guild
  *
  * @arg amount
  * @type number
@@ -89,7 +89,7 @@
  * @text Set Leader Stance
  * @arg leaderId
  * @type string
- * @default leader_villagers
+ * @default leader_church
  *
  * @arg stance
  * @type string
@@ -106,7 +106,7 @@
  * @arg charId
  * @text Leader ID
  * @type string
- * @default leader_merchants
+ * @default leader_mage_guild
  *
  * @command CheckDragonEcho
  * @text Check Dragon Echo Level

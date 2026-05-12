@@ -39,22 +39,22 @@ Imported.EmergentWorld_Events = true;
             summary = "Panic spreads; the undead claim more ground.";
             tensionDelta = 6;
             relationshipDelta = -4;
-            factionDeltas.villagers = { military: -3, power: -2 };
-            factionDeltas.bandits = { military: 2 };
+            factionDeltas.church = { military: -3, power: -2 };
+            factionDeltas.redbane = { military: 2 };
         } else if (cid === "ELEMENTAL_RIFTS" && at === "INQUISITION") {
             title = "The Inquisition";
             summary = "Magic is banned; mages and allies are hunted.";
             tensionDelta = 5;
             relationshipDelta = trait === "PURIST" ? -10 : -6;
-            factionDeltas.merchants = { wealth: -5 };
-            factionDeltas.valemont = { military: 2 };
+            factionDeltas.mage_guild = { wealth: -5 };
+            factionDeltas.church = { military: 2 };
         } else if (cid === "CIVIL_WAR" && at === "COUP_PRESSURE") {
             title = "Succession Ultimatum";
             summary = "Rebel houses demand the crown; loyalists mobilize.";
             tensionDelta = 7;
             relationshipDelta = -3;
-            factionDeltas.caelmont = { military: 3 };
-            factionDeltas.valemont = { military: 3 };
+            factionDeltas.langford = { military: 3 };
+            factionDeltas.blackwood = { military: 3 };
         } else if (at === "MILITARY_WITHDRAWAL") {
             title = "Defensive pullback";
             summary = "Forces consolidate; the crisis fills the vacuum.";
@@ -67,14 +67,14 @@ Imported.EmergentWorld_Events = true;
             tensionDelta = 2;
             relationshipDelta = -5;
             factionDeltas[leader.factionId] = { wealth: 6, power: 4 };
-            factionDeltas.villagers = { wealth: -4 };
+            factionDeltas.church = { wealth: -4 };
         } else if (at === "CRUSADE") {
             title = "Holy strike";
             summary = "A coordinated push against the threat.";
             tensionDelta = -4;
             relationshipDelta = 4;
             factionDeltas[leader.factionId] = { military: -4, power: 2 };
-            factionDeltas.bandits = { military: -2 };
+            factionDeltas.redbane = { military: -2 };
         } else if (at === "DESPERATE_MEASURES") {
             title = "Threshold breach";
             summary = "Extreme orders ripple across the realm.";
